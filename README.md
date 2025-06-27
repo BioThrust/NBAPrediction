@@ -53,7 +53,7 @@ NBAPrediction/
    collect_data.bat
    ```
 
-3. **Train Neural Network** - Double-click `train_model.bat` or run:
+3. **Train Neural Network** (Optional) - Double-click `train_model.bat` or run:
    ```bash
    train_model.bat
    ```
