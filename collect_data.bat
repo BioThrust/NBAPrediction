@@ -1,24 +1,34 @@
 @echo off
+setlocal enabledelayedexpansion
 echo ========================================
 echo NBA Prediction - Data Collection
 echo ========================================
 echo.
 
-echo Starting data collection process...
+echo Choose data collection mode:
+echo 1. Single season (e.g., 2024 for 2023-2024 season)
+echo 2. Multiple seasons (e.g., 2022,2023,2024 for multiple years)
+echo.
+set /p MODE="Enter 1 or 2: "
+
+if "%MODE%"=="1" goto single
+if "%MODE%"=="2" goto multiple
+echo Invalid choice. Please run the script again and select 1 or 2.
+goto end
+
+:single
+set /p SEASON_YEAR="Enter the NBA ending season year (e.g., 2024 for 2023-2024 season): "
+echo.
+echo Starting data collection process for %SEASON_YEAR% season...
 echo This will:
 echo 1. Scrape team statistics from Basketball Reference
 echo 2. Collect historical odds data from OddsPortal
-echo 3. Generate the 2024 season dataset
+echo 3. Generate the %SEASON_YEAR% season dataset
 echo 4. Cache team statistics for faster future runs
 echo.
 
-echo Note: This process may take several minutes depending on your internet connection.
-echo.
-
-cd data_collection
-
-echo Running playoff_data.py...
-python playoff_data.py
+echo Running playoff_data.py for %SEASON_YEAR% season...
+python -m data_collection.playoff_data %SEASON_YEAR%
 
 if %ERRORLEVEL% EQU 0 (
     echo.
@@ -27,8 +37,8 @@ if %ERRORLEVEL% EQU 0 (
     echo ========================================
     echo.
     echo Files created:
-    echo - json_files/2024-season.json (main dataset)
-    echo - json_files/team_stats_cache.json (cached team stats)
+    echo - json_files/%SEASON_YEAR%-season.json (main dataset)
+    echo - json_files/team_stats_cache_%SEASON_YEAR%.json (cached team stats)
     echo.
     echo You can now run train_model.bat to train the neural network.
 ) else (
@@ -40,9 +50,61 @@ if %ERRORLEVEL% EQU 0 (
     echo Please check the error messages above and try again.
     echo Make sure you have all required dependencies installed.
 )
+goto end
 
-cd ..
+:multiple
+set /p SEASONS="Enter multiple season years separated by commas (e.g., 2022,2023,2024): "
+echo.
+echo Starting data collection process for multiple seasons: %SEASONS%
+echo This will:
+echo 1. Scrape team statistics from Basketball Reference for each season
+echo 2. Collect historical odds data from OddsPortal for each season
+echo 3. Generate separate datasets for each season
+echo 4. Cache team statistics for faster future runs
+echo.
 
+set SEASONS_PARSED=%SEASONS:,= %
+
+for %%s in (%SEASONS_PARSED%) do (
+    echo.
+    echo ========================================
+    echo Processing season %%s...
+    echo ========================================
+    echo Running playoff_data.py for %%s season...
+    python -m data_collection.playoff_data %%s
+    
+    if !ERRORLEVEL! EQU 0 (
+        echo Season %%s completed successfully!
+    ) else (
+        echo Error: Season %%s failed!
+    )
+)
+
+echo.
+echo ========================================
+echo Multi-season data collection completed!
+echo ========================================
+echo.
+echo Files created:
+for %%s in (%SEASONS_PARSED%) do (
+    if exist "json_files\%%s-season.json" (
+        echo - json_files/%%s-season.json ✓
+    ) else (
+        echo - json_files/%%s-season.json ✗ (failed)
+    )
+    if exist "json_files\team_stats_cache_%%s.json" (
+        echo - json_files/team_stats_cache_%%s.json ✓
+    ) else (
+        echo - json_files/team_stats_cache_%%s.json ✗ (failed)
+    )
+)
+echo.
+echo You can now run train_model.bat to train the neural network.
+echo Or run combine_seasons.bat to combine the successful datasets.
+
+goto end
+
+:end
 echo.
 echo Press any key to exit...
 pause >nul 

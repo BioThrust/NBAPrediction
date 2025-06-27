@@ -11,6 +11,7 @@ import os
 import json
 import numpy as np
 import pandas as pd
+import config
 
 # Add necessary paths to system path for imports
 sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
@@ -25,8 +26,22 @@ from ensemble_models.ensemble_model import EnsembleNBAPredictor
 from ensemble_models.advanced_ensemble import AdvancedEnsembleNBAPredictor
 
 # Load playoff dataset with odds information
-with open('json_files/2024-season.json', 'r') as f:
-    playoff_dataset = json.load(f)
+season_year = 2024  # Default season
+if len(sys.argv) > 1:
+    try:
+        season_year = int(sys.argv[1])
+    except ValueError:
+        print("Error: Season year must be a valid integer (e.g., 2024)")
+        sys.exit(1)
+
+season_data_file = f'json_files/{season_year}-season.json'
+try:
+    with open(season_data_file, 'r') as f:
+        playoff_dataset = json.load(f)
+except FileNotFoundError:
+    print(f"Error: {season_data_file} not found.")
+    print(f"Please run collect_data.bat first to generate the {season_year} season dataset.")
+    sys.exit(1)
 
 
 def load_model(model_type='nn'):
@@ -199,18 +214,21 @@ star_players = [
 ]
 
 
-def remove_injuries(matchups):
+def remove_injuries(matchups, star_players=None):
     """
     Remove games where either team has a major injury to star players.
     
     Args:
         matchups (DataFrame): DataFrame containing game matchups
+        star_players (list, optional): List of star players to check for injuries. Defaults to config.STAR_PLAYERS.
     
     Returns:
         DataFrame: Filtered matchups with injury games removed
     """
+    if star_players is None:
+        star_players = config.STAR_PLAYERS
     for player in star_players:
-        game_log = get_game_logs(player, 2024)
+        game_log = get_game_logs(player, season_year)
         
         for index, row in game_log.iterrows():
             # Convert Timestamp to string format, handling NaT values
@@ -281,7 +299,7 @@ def main():
     print("   - Simulates betting on games using real odds data")
     print("   - Calculates potential winnings/losses and ROI")
     print("   - Shows bet amounts and betting performance")
-    print("   - Requires odds data from json_files/2024-season.json")
+    print(f"   - Requires odds data from {season_data_file}")
     print("2. Disable betting (prediction accuracy only)")
     print("   - Focuses purely on prediction accuracy")
     print("   - No betting calculations or financial analysis")
@@ -314,8 +332,8 @@ def main():
             base_bet = 0
     
     # Get the schedule data
-    print("Loading 2024 season schedule...")
-    matchups = get_schedule(2024)
+    print(f"Loading {season_year} season schedule...")
+    matchups = get_schedule(season_year)
     matchups = remove_injuries(matchups)
     print(f"Loaded {len(matchups)} games")
     
@@ -360,8 +378,8 @@ def main():
             home_abbr = get_team_abbreviation(home)
             
             # Get team stats for feature creation
-            away_stats = get_team_stats(away_abbr)
-            home_stats = get_team_stats(home_abbr)
+            away_stats = get_team_stats(away_abbr, season_year)
+            home_stats = get_team_stats(home_abbr, season_year)
             
             # Create features and make prediction
             features, feature_names = create_comparison_features(away_stats, home_stats)

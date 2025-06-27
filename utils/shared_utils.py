@@ -173,25 +173,32 @@ def create_comparison_features(away_team_stats, home_team_stats):
     
     return np.array(comparison_features), feature_names
 
-def get_team_stats(team_abbr):
+def get_team_stats(team_abbr, season_year=None):
     """
     Get team statistics from cached data.
     
     Args:
         team_abbr (str): Team abbreviation (e.g., "BOS", "LAL")
+        season_year (int, optional): NBA season year. Defaults to config.SEASON_YEAR.
     
     Returns:
         dict: Team statistics dictionary
     """
+    if season_year is None:
+        import config
+        season_year = config.SEASON_YEAR
+    
     try:
-        # Load cached team stats
-        with open('json_files/team_stats_cache.json', 'r') as f:
+        # Load cached team stats for specific season
+        import config
+        team_stats_cache_file = config.get_team_stats_cache_file(season_year)
+        with open(team_stats_cache_file, 'r') as f:
             team_stats_cache = json.load(f)
         
         if team_abbr in team_stats_cache:
             return team_stats_cache[team_abbr]
         else:
-            print(f"Warning: Team {team_abbr} not found in cache. Using average stats.")
+            print(f"Warning: Team {team_abbr} not found in {season_year} cache. Using average stats.")
             # Return average stats for unknown teams
             return {
                 'net_rating': 0.0, 
@@ -208,7 +215,7 @@ def get_team_stats(team_abbr):
                 'opp_efg_pct': 0.55
             }
     except FileNotFoundError:
-        print("Warning: team_stats_cache.json not found. Please run data_collection/playoff_data.py first to generate team stats.")
+        print(f"Warning: {team_stats_cache_file} not found for {season_year} season. Please run data_collection/playoff_data.py first to generate team stats.")
         print("Using placeholder stats for all teams.")
         # Return average stats as fallback
         return {

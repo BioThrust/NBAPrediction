@@ -8,9 +8,18 @@ from sklearn.model_selection import cross_val_score, KFold, GridSearchCV
 from sklearn.metrics import accuracy_score, classification_report, roc_auc_score
 from sklearn.preprocessing import StandardScaler
 import xgboost as xgb
+import sys
+import os
+
+# Add parent directory to path to import utils
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from utils.shared_utils import get_team_stats, create_comparison_features, PredictionNeuralNetwork
 import warnings
 warnings.filterwarnings('ignore')
+
+def get_data_file_path(filename):
+    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    return os.path.join(project_root, 'json_files', filename)
 
 class AdvancedEnsembleNBAPredictor:
     def __init__(self):
@@ -22,9 +31,25 @@ class AdvancedEnsembleNBAPredictor:
         self.is_trained = False
         self.betting_thresholds = {}
         
-    def load_data(self, data_file='json_files/2024-season.json'):
+    def load_data(self, data_file=None):
         """Load and prepare training data with odds information"""
+        if data_file is None:
+            import sys
+            if len(sys.argv) > 2:
+                try:
+                    season_year = sys.argv[2]
+                    if season_year == 'combined':
+                        data_file = get_data_file_path('combined-seasons.json')
+                    else:
+                        season_year = int(season_year)
+                        data_file = get_data_file_path(f'{season_year}-season.json')
+                except ValueError:
+                    data_file = get_data_file_path('2024-season.json')
+            else:
+                data_file = get_data_file_path('2024-season.json')
+        
         print("Loading training data...")
+        print(f"Loading from: {data_file}")
         with open(data_file, 'r') as f:
             self.raw_data = json.load(f)
         
@@ -33,6 +58,7 @@ class AdvancedEnsembleNBAPredictor:
         self.y = []
         self.odds = []
         self.game_keys = []
+        feature_names = None  # Initialize feature_names
         
         for game_key, game_data in self.raw_data.items():
             if 'result' in game_data:
@@ -48,8 +74,12 @@ class AdvancedEnsembleNBAPredictor:
                     home_stats = game_data[home_team]
                     
                     # Create features
-                    features, feature_names = create_comparison_features(away_stats, home_stats)
+                    features, current_feature_names = create_comparison_features(away_stats, home_stats)
                     if features is not None:
+                        # Set feature_names on first iteration
+                        if feature_names is None:
+                            feature_names = current_feature_names
+                        
                         self.X.append(features)
                         self.y.append(game_data['result'])
                         
@@ -59,6 +89,10 @@ class AdvancedEnsembleNBAPredictor:
                         self.odds.append({'home': home_odds, 'away': away_odds})
                         
                         self.game_keys.append(game_key)
+        
+        # Check if we have any data
+        if len(self.X) == 0:
+            raise ValueError("No valid games found in dataset. Please check your data file.")
         
         self.X = np.array(self.X)
         self.y = np.array(self.y)
@@ -128,7 +162,7 @@ class AdvancedEnsembleNBAPredictor:
         
         # Load neural network if available
         try:
-            with open('json_files/weights.json', 'r') as f:
+            with open('../json_files/weights.json', 'r') as f:
                 weights_data = json.load(f)
             self.models['neural_net'] = PredictionNeuralNetwork(weights_data)
             print("Loaded existing neural network")
@@ -414,17 +448,19 @@ class AdvancedEnsembleNBAPredictor:
                 total_bets = len(recommendations)
                 winning_bets = 0
                 total_profit = 0
+                total_money_bet = 0
                 
                 for rec in recommendations:
                     game_idx = rec['game_index']
                     bet_side = rec['bet_side']
                     bet_amount = rec['recommended_bet']
+                    total_money_bet += bet_amount
                     
-                    if bet_side == "HOME" and y_test[game_idx] == 1:
+                    if bet_side == "HOME" and y_test[game_idx] == 0:
                         winning_bets += 1
                         if odds_test[game_idx]['home'] is not None:
                             total_profit += bet_amount * (odds_test[game_idx]['home'] - 1)
-                    elif bet_side == "AWAY" and y_test[game_idx] == 0:
+                    elif bet_side == "AWAY" and y_test[game_idx] == 1:
                         winning_bets += 1
                         if odds_test[game_idx]['away'] is not None:
                             total_profit += bet_amount * (odds_test[game_idx]['away'] - 1)
@@ -434,9 +470,10 @@ class AdvancedEnsembleNBAPredictor:
                 bet_accuracy = winning_bets / total_bets if total_bets > 0 else 0
                 print(f"\nBetting Performance:")
                 print(f"Total bets: {total_bets}")
+                print(f"Total money bet: {total_money_bet:.4f}")
                 print(f"Betting accuracy: {bet_accuracy:.4f}")
                 print(f"Total profit: {total_profit:.4f}")
-                print(f"ROI: {(total_profit/total_bets)*100:.2f}%" if total_bets > 0 else "N/A")
+                print(f"ROI: {(total_profit/total_money_bet)*100:.2f}%" if total_money_bet > 0 else "N/A")
         
         return ensemble_acc, ensemble_auc
     

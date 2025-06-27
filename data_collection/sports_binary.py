@@ -10,13 +10,41 @@ import json
 import random
 import numpy as np
 import math
+import sys
 from sklearn.model_selection import KFold
 from sklearn.utils.class_weight import compute_class_weight
 
+def load_season_data(season_year):
+    """
+    Load the season data from JSON file.
+    
+    Args:
+        season_year (int or str): NBA season year or 'combined' for combined dataset
+    
+    Returns:
+        dict: Season data loaded from JSON file
+    """
+    if season_year == 'combined':
+        season_data_file = 'json_files/combined-seasons.json'
+    else:
+        season_data_file = f'json_files/{season_year}-season.json'
+    
+    try:
+        with open(season_data_file, 'r') as f:
+            return json.load(f)
+    except FileNotFoundError:
+        print(f"Error: {season_data_file} not found.")
+        if season_year == 'combined':
+            print("Please run combine_seasons.bat first to create the combined dataset.")
+        else:
+            print(f"Please run collect_data.bat first to generate the {season_year} season dataset.")
+        sys.exit(1)
+    except Exception as e:
+        print(f"Error loading {season_data_file}: {e}")
+        sys.exit(1)
+
 # Load the JSON file into a dictionary
 season_data = {}
-with open('json_files/2024-season.json', 'r') as f:
-    season_data = json.load(f)
 
 def normalize_features(train_data):
     """
@@ -476,6 +504,25 @@ def cross_validate_neural_network(train_data, n_folds=5, n_epochs=100):
 # Main execution
 if __name__ == "__main__":
     print("=== NBA Neural Network Training ===")
+    
+    # Get season year from command line argument
+    if len(sys.argv) > 1:
+        try:
+            season_year = sys.argv[1]
+            if season_year == 'combined':
+                print("Using combined dataset for training.")
+            else:
+                season_year = int(season_year)
+                print(f"Training model for {season_year-1}-{season_year} season...")
+        except ValueError:
+            print("Error: Season year must be a valid integer (e.g., 2024) or 'combined' for combined dataset.")
+            sys.exit(1)
+    else:
+        print("Using default season: 2023-2024")
+        season_year = 2024
+    
+    # Load the season data
+    season_data = load_season_data(season_year)
     
     # Normalize the data
     print("Normalizing features...")

@@ -9,6 +9,7 @@ Users can input team abbreviations to get predictions with confidence levels.
 import json
 import numpy as np
 import math
+import config
 
 # Import custom modules
 from ensemble_models.ensemble_model import EnsembleNBAPredictor
@@ -16,12 +17,13 @@ from ensemble_models.advanced_ensemble import AdvancedEnsembleNBAPredictor
 from utils.shared_utils import PredictionNeuralNetwork, get_team_stats, create_comparison_features
 
 
-def load_model(model_type='nn'):
+def load_model(model_type='nn', dataset_year=None):
     """
     Load the selected prediction model.
     
     Args:
         model_type (str): Type of model to load ('nn', 'ensemble', or 'advanced')
+        dataset_year (str): Year of dataset to use for training ensemble models
     
     Returns:
         model: Loaded prediction model or None if loading fails
@@ -29,7 +31,18 @@ def load_model(model_type='nn'):
     if model_type == 'ensemble':
         print("Loading basic ensemble model...")
         model = EnsembleNBAPredictor()
-        X, y = model.load_data()
+        
+        # Set the dataset year for training
+        if dataset_year:
+            import sys
+            # Temporarily set sys.argv to pass dataset choice to load_data
+            original_argv = sys.argv.copy()
+            sys.argv = ['predict_game.py', 'ensemble', dataset_year]
+            X, y = model.load_data()
+            sys.argv = original_argv  # Restore original argv
+        else:
+            X, y = model.load_data()
+            
         model.initialize_models()
         
         from sklearn.model_selection import train_test_split
@@ -43,7 +56,18 @@ def load_model(model_type='nn'):
     elif model_type == 'advanced':
         print("Loading advanced ensemble model...")
         model = AdvancedEnsembleNBAPredictor()
-        X, y = model.load_data()
+        
+        # Set the dataset year for training
+        if dataset_year:
+            import sys
+            # Temporarily set sys.argv to pass dataset choice to load_data
+            original_argv = sys.argv.copy()
+            sys.argv = ['predict_game.py', 'advanced', dataset_year]
+            X, y = model.load_data()
+            sys.argv = original_argv  # Restore original argv
+        else:
+            X, y = model.load_data()
+            
         model.initialize_models()
         
         from sklearn.model_selection import train_test_split
@@ -89,11 +113,81 @@ def main():
     print("Enter team abbreviations (e.g., BOS, LAL, DEN, GSW, PHO, MIA, NYK, MIL, PHI, CLE)")
     print()
     
+    # Choose year for team stats cache
+    print("Choose which year's team stats to use:")
+    print("1. 2024 season (2023-2024 NBA season)")
+    print("2. 2025 season (2024-2025 NBA season)")
+    print("3. Use default from config")
+    print("4. Enter custom year manually")
+    print()
+    
+    year_choice = input("Enter 1, 2, 3, 4, or press Enter for default: ").strip()
+    
+    # Determine which year to use
+    if year_choice == '1':
+        cache_year = 2024
+        print(f"Using {cache_year} season team stats...")
+    elif year_choice == '2':
+        cache_year = 2025
+        print(f"Using {cache_year} season team stats...")
+    elif year_choice == '4':
+        while True:
+            try:
+                custom_year = input("Enter year (e.g., 2023, 2024, 2025): ").strip()
+                cache_year = int(custom_year)
+                if 2000 <= cache_year <= 2030:  # Reasonable year range
+                    print(f"Using {cache_year} season team stats...")
+                    break
+                else:
+                    print("Please enter a year between 2000 and 2030.")
+            except ValueError:
+                print("Please enter a valid year number.")
+    else:
+        cache_year = config.SEASON_YEAR
+        print(f"Using default season ({cache_year}) team stats...")
+    
+    # Choose dataset for ensemble training
+    print("\nChoose which dataset to train ensemble models on:")
+    print("1. 2024 season (2023-2024 NBA season)")
+    print("2. 2025 season (2024-2025 NBA season)")
+    print("3. Combined dataset (multiple seasons)")
+    print("4. Use default from config")
+    print("5. Enter custom year manually")
+    print()
+    
+    dataset_choice = input("Enter 1, 2, 3, 4, 5, or press Enter for default: ").strip()
+    
+    # Determine which dataset to use
+    if dataset_choice == '1':
+        dataset_year = '2024'
+        print(f"Using {dataset_year} season dataset for training...")
+    elif dataset_choice == '2':
+        dataset_year = '2025'
+        print(f"Using {dataset_year} season dataset for training...")
+    elif dataset_choice == '3':
+        dataset_year = 'combined'
+        print(f"Using combined dataset for training...")
+    elif dataset_choice == '5':
+        while True:
+            try:
+                custom_year = input("Enter year for dataset (e.g., 2023, 2024, 2025): ").strip()
+                dataset_year = custom_year
+                if 2000 <= int(custom_year) <= 2030:  # Reasonable year range
+                    print(f"Using {dataset_year} season dataset for training...")
+                    break
+                else:
+                    print("Please enter a year between 2000 and 2030.")
+            except ValueError:
+                print("Please enter a valid year number.")
+    else:
+        dataset_year = None  # Use default from config
+        print(f"Using default dataset for training...")
+    
     # Model selection with ensemble as default
-    print("Choose prediction model:")
+    print("\nChoose prediction model:")
     print("1. Neural Network (original) - Basic single model")
-    print("2. Basic Ensemble (RECOMMENDED) - Combines multiple algorithms for better accuracy")
-    print("3. Advanced Ensemble - Includes betting analysis and confidence intervals")
+    print("2. Basic Ensemble (RECOMMENDED) - Best pure accuracy")
+    print("3. Advanced Ensemble - Betting analysis and confidence intervals")
     print()
     print("RECOMMENDED: Choose option 2 for best accuracy or option 3 for betting insights.")
     print()
@@ -105,26 +199,27 @@ def main():
         print("Using Basic Ensemble (recommended)...")
         model_choice = '2'
     
-    # Load the selected model
+    # Load the selected model with dataset choice
     if model_choice == '2':
-        model = load_model('ensemble')
+        model = load_model('ensemble', dataset_year)
     elif model_choice == '3':
-        model = load_model('advanced')
+        model = load_model('advanced', dataset_year)
     else:
         model = load_model('nn')
     
     if model is None:
         return
     
-    # Check if team stats cache exists
+    # Check if team stats cache exists for the chosen year
+    team_stats_cache_file = config.get_team_stats_cache_file(cache_year)
     try:
-        with open('json_files/team_stats_cache.json', 'r') as f:
+        with open(team_stats_cache_file, 'r') as f:
             team_stats_cache = json.load(f)
         available_teams = list(team_stats_cache.keys())
-        print(f"Team stats cache loaded successfully! ({len(available_teams)} teams available)")
+        print(f"Team stats cache loaded successfully for {cache_year} season! ({len(available_teams)} teams available)")
         print(f"Available teams: {', '.join(available_teams)}")
     except FileNotFoundError:
-        print("Warning: team_stats_cache.json not found. Please run data_collection/playoff_data.py first to generate team stats.")
+        print(f"Warning: {team_stats_cache_file} not found. Please run data_collection/playoff_data.py first to generate team stats for {cache_year} season.")
         print("Using placeholder stats for all teams.")
     except Exception as e:
         print(f"Error loading team stats cache: {e}")

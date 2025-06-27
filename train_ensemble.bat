@@ -23,10 +23,34 @@ echo Note: This process may take 5-10 minutes depending on your system.
 echo Make sure you have run collect_data.bat first to generate the dataset.
 echo.
 
+echo Choose ensemble type:
+echo - Enter "basic" for basic ensemble (XGBoost, Random Forest, Logistic Regression, Neural Network)
+echo - Enter "advanced" for advanced ensemble (Stacking, Voting, Betting Analysis)
+echo - Enter "both" to train both ensemble types
+echo.
+
+set /p ENSEMBLE_TYPE="Enter ensemble type (basic/advanced/both): "
+
+echo.
+echo Enter the season year to train on:
+echo - Enter a year (e.g., 2024, 2025) for a specific season
+echo - Enter "combined" for multiple seasons combined
+echo - Press Enter for interactive mode
+echo.
+
+set /p SEASON_INPUT="Enter season year or 'combined': "
+
 cd ensemble_models
 
 echo Running ensemble training...
-python run_ensemble.py
+if not "%SEASON_INPUT%"=="" (
+    echo Using ensemble type: %ENSEMBLE_TYPE%
+    echo Using dataset: %SEASON_INPUT%
+    python run_ensemble.py %ENSEMBLE_TYPE% %SEASON_INPUT%
+) else (
+    echo Running in interactive mode...
+    python run_ensemble.py %ENSEMBLE_TYPE%
+)
 
 if %ERRORLEVEL% EQU 0 (
     echo.

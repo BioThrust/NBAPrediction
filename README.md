@@ -234,3 +234,62 @@ python test_results.py
 - Each folder has an `__init__.py` file for proper Python packaging
 - Batch files provide a user-friendly way to run the main processes
 - **Recommendation**: Use Basic Ensemble (option 2) for general predictions, Advanced Ensemble (option 3) for betting insights 
+
+## Multi-Season Data Collection and Training
+
+The project now supports collecting data for multiple seasons and training models on combined datasets for better performance.
+
+### Multi-Season Data Collection
+
+1. **Collect Multiple Seasons at Once**:
+   ```bash
+   collect_data.bat
+   # Choose option 2: Multiple seasons
+   # Enter: 2022,2023,2024
+   # Creates: json_files/2022-season.json, json_files/2023-season.json, json_files/2024-season.json
+   ```
+
+2. **Combine Multiple Seasons**:
+   ```bash
+   combine_seasons.bat
+   # Enter: 2022,2023,2024
+   # Creates: json_files/combined-seasons.json
+   ```
+
+### Multi-Season Training
+
+1. **Train on Single Season**:
+   ```bash
+   train_neural.bat
+   # Choose option 1: Single season
+   # Enter: 2024
+   # Trains on: json_files/2024-season.json
+   ```
+
+2. **Train on Combined Dataset**:
+   ```bash
+   train_neural.bat
+   # Choose option 2: Combined dataset
+   # Trains on: json_files/combined-seasons.json
+   ```
+
+### Benefits of Multi-Season Training
+
+- **More Training Data**: Multiple seasons provide more examples
+- **Better Generalization**: Models learn patterns across different years
+- **Improved Accuracy**: Larger datasets typically lead to better performance
+- **Robust Models**: Less prone to overfitting on single-season patterns
+
+### File Structure with Multi-Season Support
+
+```
+json_files/
+├── 2022-season.json        # 2021-2022 season data
+├── 2023-season.json        # 2022-2023 season data
+├── 2024-season.json        # 2023-2024 season data
+├── combined-seasons.json   # Combined multi-season dataset
+├── weights.json           # Trained model weights
+└── team_stats_cache.json  # Cached team statistics
+```
+
+## Project Structure 

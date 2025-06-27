@@ -1,0 +1,86 @@
+{
+    "betting_thresholds": {
+        "xgboost": {
+            "threshold": 0.8000000000000002,
+            "kelly_score": 1.5913690476190505
+        },
+        "gradient_boost": {
+            "threshold": 0.8500000000000002,
+            "kelly_score": 1.58779881656805
+        },
+        "random_forest": {
+            "threshold": 0.8500000000000002,
+            "kelly_score": 1.6264844903988167
+        },
+        "logistic": {
+            "threshold": 0.8500000000000002,
+            "kelly_score": 1.5599488054607507
+        },
+        "ridge": {
+            "threshold": 0.8000000000000002,
+            "kelly_score": 2.359090909090909
+        },
+        "svm": {
+            "threshold": 0.8500000000000002,
+            "kelly_score": 1.4980246913580233
+        }
+    },
+    "feature_names": [
+        "net_rating_diff",
+        "net_rating_ratio",
+        "offensive_rating_diff",
+        "offensive_rating_ratio",
+        "defensive_rating_diff",
+        "defensive_rating_ratio",
+        "efg_pct_diff",
+        "efg_pct_ratio",
+        "pace_diff",
+        "pace_ratio",
+        "offensive_tov_diff",
+        "offensive_tov_ratio",
+        "trb_diff",
+        "trb_ratio",
+        "ast_diff",
+        "ast_ratio",
+        "opp_offensive_tov_diff",
+        "opp_offensive_tov_ratio",
+        "opp_trb_diff",
+        "opp_trb_ratio",
+        "opp_ast_diff",
+        "opp_ast_ratio",
+        "opp_efg_pct_diff",
+        "opp_efg_pct_ratio",
+        "home_court_advantage",
+        "net_rating_advantage",
+        "away_momentum",
+        "offensive_advantage",
+        "defensive_advantage",
+        "shooting_advantage",
+        "pace_advantage",
+        "turnover_advantage",
+        "rebounding_advantage",
+        "assists_advantage",
+        "opp_turnover_advantage",
+        "opp_rebounding_advantage",
+        "opp_assists_advantage",
+        "opp_shooting_advantage",
+        "overall_efficiency",
+        "away_team_strength",
+        "close_game_indicator",
+        "high_scoring_game",
+        "defensive_battle"
+    ],
+    "is_trained": true,
+    "model_info": {
+        "type": "advanced_ensemble",
+        "models": [
+            "xgboost",
+            "gradient_boost",
+            "random_forest",
+            "logistic",
+            "ridge",
+            "svm"
+        ],
+        "saved_timestamp": "2025-06-26 22:32:03.832911"
+    }
+}

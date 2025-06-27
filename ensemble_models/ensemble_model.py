@@ -14,6 +14,11 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import cross_val_score, KFold
 from sklearn.metrics import accuracy_score, classification_report
 import xgboost as xgb
+import sys
+import os
+
+# Add parent directory to path to import utils
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from utils.shared_utils import get_team_stats, create_comparison_features, PredictionNeuralNetwork
 import warnings
 
@@ -38,7 +43,11 @@ class EnsembleNBAPredictor:
         self.feature_names = None
         self.is_trained = False
     
-    def load_data(self, data_file='json_files/2024-season.json'):
+    def get_data_file_path(self, filename):
+        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        return os.path.join(project_root, 'json_files', filename)
+    
+    def load_data(self, data_file=None):
         """
         Load and prepare training data from JSON file.
         
@@ -48,7 +57,23 @@ class EnsembleNBAPredictor:
         Returns:
             tuple: (X, y) - Feature matrix and target labels
         """
+        if data_file is None:
+            import sys
+            if len(sys.argv) > 2:
+                try:
+                    season_year = sys.argv[2]
+                    if season_year == 'combined':
+                        data_file = self.get_data_file_path('combined-seasons.json')
+                    else:
+                        season_year = int(season_year)
+                        data_file = self.get_data_file_path(f'{season_year}-season.json')
+                except ValueError:
+                    data_file = self.get_data_file_path('2024-season.json')
+            else:
+                data_file = self.get_data_file_path('2024-season.json')
+        
         print("Loading training data...")
+        print(f"Loading from: {data_file}")
         with open(data_file, 'r') as f:
             self.raw_data = json.load(f)
         
@@ -122,7 +147,7 @@ class EnsembleNBAPredictor:
         
         # Neural Network (load existing trained model)
         try:
-            with open('json_files/weights.json', 'r') as f:
+            with open('../json_files/weights.json', 'r') as f:
                 weights_data = json.load(f)
             self.models['neural_net'] = PredictionNeuralNetwork(weights_data)
             print("Loaded existing neural network")

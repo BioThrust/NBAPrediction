@@ -5,8 +5,8 @@ Simple script to run NBA ensemble predictions
 
 import sys
 import json
-from .ensemble_model import EnsembleNBAPredictor
-from .advanced_ensemble import AdvancedEnsembleNBAPredictor
+from ensemble_model import EnsembleNBAPredictor
+from advanced_ensemble import AdvancedEnsembleNBAPredictor
 
 def run_basic_ensemble():
     """Run the basic ensemble model"""
@@ -169,45 +169,17 @@ def main():
             print("  python run_ensemble.py advanced BOS LAL 1.85 2.05")
             print("  python run_ensemble.py both BOS LAL 1.85 2.05")
     else:
-        # Interactive mode
-        print("Interactive Mode - Choose an option:")
-        print("1. Run Basic Ensemble")
-        print("2. Run Advanced Ensemble")
-        print("3. Run Both")
-        print("4. Exit")
-        
-        choice = input("\nEnter your choice (1-4): ").strip()
-        
-        if choice == "1":
-            ensemble = run_basic_ensemble()
-            if ensemble:
+        # Interactive mode - only for game prediction, not ensemble type selection
+        print("Interactive Mode - Enter teams for prediction:")
                 away_team = input("Enter away team (e.g., BOS): ").strip()
                 home_team = input("Enter home team (e.g., LAL): ").strip()
-                predict_specific_game(ensemble, away_team, home_team)
-                
-        elif choice == "2":
-            ensemble = run_advanced_ensemble()
-            if ensemble:
-                away_team = input("Enter away team (e.g., BOS): ").strip()
-                home_team = input("Enter home team (e.g., LAL): ").strip()
-                use_odds = input("Use odds? (y/n): ").strip().lower()
-                
-                odds = None
-                if use_odds == 'y':
-                    home_odds = float(input("Enter home odds (e.g., 1.85): "))
-                    away_odds = float(input("Enter away odds (e.g., 2.05): "))
-                    odds = {'home': home_odds, 'away': away_odds}
-                
-                predict_specific_game(ensemble, away_team, home_team, odds)
-                
-        elif choice == "3":
+        
+        # Run both ensembles for comparison
             basic_ensemble = run_basic_ensemble()
             advanced_ensemble = run_advanced_ensemble()
             
             if basic_ensemble and advanced_ensemble:
-                away_team = input("Enter away team (e.g., BOS): ").strip()
-                home_team = input("Enter home team (e.g., LAL): ").strip()
-                use_odds = input("Use odds? (y/n): ").strip().lower()
+            use_odds = input("Use odds for advanced ensemble? (y/n): ").strip().lower()
                 
                 odds = None
                 if use_odds == 'y':
@@ -218,11 +190,6 @@ def main():
                 print("\n" + "="*50)
                 predict_specific_game(basic_ensemble, away_team, home_team)
                 predict_specific_game(advanced_ensemble, away_team, home_team, odds)
-        
-        elif choice == "4":
-            print("Goodbye!")
-        else:
-            print("Invalid choice!")
 
 if __name__ == "__main__":
     main() 
