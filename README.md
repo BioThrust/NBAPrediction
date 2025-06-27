@@ -41,7 +41,6 @@ NBAPrediction/
 
 ## Quick Start (Windows)
 
-### Option 1: Using Batch Files (Recommended for Windows Users)
 
 1. **Install Dependencies**
    ```bash
@@ -58,51 +57,14 @@ NBAPrediction/
    ```bash
    train_model.bat
    ```
-
-4. **Train Ensemble Models** (RECOMMENDED) - Double-click `train_ensemble.bat` or run:
-   ```bash
-   train_ensemble.bat
-   ```
    
-5. **Make Predictions** - Double-click `run_prediction.bat` or run:
+4. **Make Predictions** - Double-click `run_prediction.bat` or run:
    ```bash
    run_prediction.bat
    ```
-
-### Option 2: Manual Commands
-
-1. **Install Dependencies**
+5. **Test Set** - Double-click `test_results.bat` or run:
    ```bash
-   pip install -r requirements.txt
-   pip install -r ensemble_models/requirements_ensemble.txt
-   ```
-
-2. **Collect Data**
-   ```bash
-   cd data_collection
-   python playoff_data.py
-   ```
-
-3. **Train Neural Network**
-   ```bash
-   cd data_collection
-   python sports_binary.py
-   ```
-
-4. **Train Ensemble Models** (RECOMMENDED)
-   ```bash
-   cd ensemble_models
-   python run_ensemble.py
-   ```
-
-5. **Make Predictions**
-   ```bash
-   python predict_game.py
-   ```
-
-6. **Test Models**
-   ```bash
-   python test_results.py
+   test_results.py
    ```
 
 ## Batch Files Description
