@@ -159,9 +159,9 @@ python test_results.py
 
 ## Performance Comparison
 
-- **Neural Network**: ~55-65% accuracy
-- **Basic Ensemble**: ~60-70% accuracy ⭐ **RECOMMENDED**
-- **Advanced Ensemble**: ~65-75% accuracy with betting analysis ⭐ **BEST**
+- **Neural Network**: ~55-65% accuracy **ORIGINAL**
+- **Basic Ensemble**: ~60-70% accuracy ⭐ **GOOD**
+- **Advanced Ensemble**: ~60-70% accuracy with betting analysis ⭐ **BEST**
 
 ## Why Ensemble Models Are Better
 
