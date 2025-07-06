@@ -2,6 +2,8 @@
 
 A comprehensive NBA game prediction system using machine learning and ensemble methods.
 
+Massive credit to https://github.com/vishaalagartha/basketball_reference_scraper/ - had to modify their library to fit the program but was a great start.
+
 ## Project Structure
 
 The project has been organized into logical folders for better maintainability:
