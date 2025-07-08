@@ -1,6 +1,7 @@
 # NBA Game Prediction Project
 
 A comprehensive NBA game prediction system using machine learning and ensemble methods.
+
 Note: it predicts which team is ***more likely*** to win, and is not indicative of actual success
 
 Massive credit to https://github.com/vishaalagartha/basketball_reference_scraper/ - had to modify their library to fit the program but was a great start.
