@@ -56,66 +56,37 @@ def get_player_suffix(name):
             return None
         initial = normalized_name.split(' ')[1][0].lower()
         all_names = name.split(' ')
+        # print(all_names)
         first_name_part = unidecode.unidecode(all_names[0][:2].lower())
         first_name = all_names[0]
         other_names = all_names[1:]
-        other_names_search = other_names
+
         last_name_part = create_last_name_part_of_suffix(other_names)
-        suffix = '/players/'+initial+'/'+last_name_part+first_name_part+'01.html'
-    player_r = get_wrapper(f'https://www.basketball-reference.com{suffix}')
-    while player_r.status_code == 404:
-        other_names_search.pop(0)
-        last_name_part = create_last_name_part_of_suffix(other_names_search)
-        initial = last_name_part[0].lower()
-        suffix = '/players/'+initial+'/'+last_name_part+first_name_part+'01.html'
-        player_r = get_wrapper(f'https://www.basketball-reference.com{suffix}')
-    while player_r.status_code==200:
-        player_soup = BeautifulSoup(player_r.content, 'html.parser')
-        h1 = player_soup.find('h1')
-        if h1:
-            page_name = h1.find('span').text
-            """
-                Test if the URL we constructed matches the 
-                name of the player on that page; if it does,
-                return suffix, if not add 1 to the numbering
-                and recheck.
-            """
-            if ((unidecode.unidecode(page_name)).lower() == normalized_name.lower()):
-                return suffix
-            else:
-                page_names = unidecode.unidecode(page_name).lower().split(' ')
-                page_first_name = page_names[0]
-                if first_name.lower() == page_first_name.lower():
-                    return suffix
-                # if players have same first two letters of last name then just
-                # increment suffix
-                elif first_name.lower()[:2] == page_first_name.lower()[:2]:
-                    player_number = int(''.join(c for c in suffix if c.isdigit())) + 1
-                    if player_number < 10:
-                        player_number = f"0{str(player_number)}"
-                    suffix = f"/players/{initial}/{last_name_part}{first_name_part}{player_number}.html"
-                else:
-                    other_names_search.pop(0)
-                    last_name_part = create_last_name_part_of_suffix(other_names_search)
-                    initial = last_name_part[0].lower()
-                    suffix = '/players/'+initial+'/'+last_name_part+first_name_part+'01.html'
+        suffix = '/players/'+initial+'/'+last_name_part+first_name_part+'01'
 
-                player_r = get_wrapper(f'https://www.basketball-reference.com{suffix}')
-
-    return None
+   
+    return suffix
 
 
 def remove_accents(name, team, season_end_year):
     alphabet = set('abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXZY ')
     if len(set(name).difference(alphabet))==0:
         return name
-    r = get_wrapper(f'https://www.basketball-reference.com/teams/{team}/{season_end_year}.html')
+    
+    # Use Selenium as default
+    from .request_utils import get_selenium_wrapper
+    table_html = get_selenium_wrapper(f'https://www.basketball-reference.com/teams/{team}/{season_end_year}.html', "//table")
+    
     team_df = None
     best_match = name
-    if r.status_code==200:
-        soup = BeautifulSoup(r.content, 'html.parser')
-        table = soup.find('table')
-        team_df = pd.read_html(str(table))[0]
+    
+    if table_html:
+        team_df = pd.read_html(table_html)[0]
+    else:
+        print("No team table found")
+        return name
+    
+    if team_df is not None:
         max_matches = 0
         for p in team_df['Player']:
             matches = sum(l1 == l2 for l1, l2 in zip(p, name))

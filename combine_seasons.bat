@@ -35,7 +35,7 @@ if %ERRORLEVEL% EQU 0 (
     echo ========================================
     echo.
     echo Files created:
-    echo - json_files/combined-seasons.json (combined dataset)
+    echo - data/combined-seasons.json (combined dataset)
     echo.
     echo You can now use this combined dataset for training:
     echo 1. Run train_neural.bat and specify 'combined' as the season

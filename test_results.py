@@ -12,6 +12,7 @@ import json
 import numpy as np
 import pandas as pd
 import config
+import joblib
 
 # Add necessary paths to system path for imports
 sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
@@ -22,8 +23,8 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), 'data
 from data_collection.basketball_reference_scraper.seasons import get_schedule
 from data_collection.basketball_reference_scraper.players import get_game_logs
 from utils.shared_utils import PredictionNeuralNetwork, get_team_stats, create_comparison_features
-from ensemble_models.ensemble_model import EnsembleNBAPredictor
-from ensemble_models.advanced_ensemble import AdvancedEnsembleNBAPredictor
+from models.ensemble_model import EnsembleNBAPredictor
+from models.advanced_ensemble import AdvancedEnsembleNBAPredictor
 
 # Load playoff dataset with odds information
 season_year = 2024  # Default season
@@ -34,65 +35,153 @@ if len(sys.argv) > 1:
         print("Error: Season year must be a valid integer (e.g., 2024)")
         sys.exit(1)
 
-season_data_file = f'json_files/{season_year}-season.json'
-try:
-    with open(season_data_file, 'r') as f:
-        playoff_dataset = json.load(f)
-except FileNotFoundError:
-    print(f"Error: {season_data_file} not found.")
-    print(f"Please run collect_data.bat first to generate the {season_year} season dataset.")
-    sys.exit(1)
+season_data_file = f'data/{season_year}-season.json'
 
 
-def load_model(model_type='nn'):
+def load_model(model_type='nn', season_year=2025):
     """
     Load the selected prediction model.
     
     Args:
         model_type (str): Type of model to load ('nn', 'ensemble', or 'advanced')
+        season_year (int): Season year for data
     
     Returns:
         model: Loaded prediction model or None if loading fails
     """
     if model_type == 'ensemble':
         print("Loading basic ensemble model...")
+        
+        # Try to load saved ensemble weights
+        ensemble_weights_found = False
+        weights_data = None
+        
+        # Try year-specific weights first, then generic
+        for weights_file in [f'data/{season_year}_ensemble_basic_weights.json', 'data/ensemble_basic_weights.json']:
+            try:
+                with open(weights_file, 'r') as f:
+                    weights_data = json.load(f)
+                accuracy = weights_data.get('model_performance', {}).get('mean_accuracy', 0.0)
+                print(f"Found saved ensemble weights! (Accuracy: {accuracy:.1f}%)")
+                ensemble_weights_found = True
+                break
+            except FileNotFoundError:
+                continue
+            except Exception as e:
+                print(f"Error loading {weights_file}: {e}")
+                continue
+        
+        if not ensemble_weights_found:
+            print("No saved ensemble weights found. Training from scratch...")
+        
+        if ensemble_weights_found and weights_data and ('weights' in weights_data or 'ensemble_weights' in weights_data):
+            # Create ensemble model and load weights
+            model = EnsembleNBAPredictor()
+            model.weights = weights_data.get('weights', weights_data.get('ensemble_weights', {}))
+            model.feature_names = weights_data.get('feature_names', [])
+            model.is_trained = weights_data.get('is_trained', True)
+            model.model_type = 'ensemble'
+            
+            # Load trained models if available
+            models_filename = weights_data.get('models_filename', weights_file.replace('.json', '_models.joblib'))
+            if models_filename.startswith('../'):
+                models_filename = models_filename[3:]  # Remove '../' prefix
+            try:
+                trained_models = joblib.load(models_filename)
+                model.models.update(trained_models)
+                print(f"Loaded {len(trained_models)} trained models: {list(trained_models.keys())}")
+            except Exception as e:
+                print(f"Warning: Could not load trained models: {e}")
+            
+            print("Basic ensemble loaded successfully from saved weights!")
+            return model
+        
+        # Fallback to training from scratch
         model = EnsembleNBAPredictor()
         X, y = model.load_data()
-        model.initialize_models()
-        
-        from sklearn.model_selection import train_test_split
-        X_train, X_test, y_train, y_test = train_test_split(
-            X, y, test_size=0.2, random_state=42, stratify=y
-        )
-        model.train_models(X_train, y_train, X_test, y_test)
+        model.fit(X, y)  # Use the new fit method
         model.model_type = 'ensemble'
         return model
         
     elif model_type == 'advanced':
         print("Loading advanced ensemble model...")
+        
+        # Try to load saved advanced ensemble weights
+        ensemble_weights_found = False
+        weights_data = None
+        
+        # Try year-specific weights first, then generic
+        for weights_file in [f'data/{season_year}_ensemble_advanced_weights.json', 'data/ensemble_advanced_weights.json']:
+            try:
+                with open(weights_file, 'r') as f:
+                    weights_data = json.load(f)
+                accuracy = weights_data.get('model_performance', {}).get('mean_accuracy', 0.0)
+                print(f"Found saved advanced ensemble weights! (Accuracy: {accuracy:.1f}%)")
+                ensemble_weights_found = True
+                break
+            except FileNotFoundError:
+                continue
+            except Exception as e:
+                print(f"Error loading {weights_file}: {e}")
+                continue
+        
+        if not ensemble_weights_found:
+            print("No saved advanced ensemble weights found. Training from scratch...")
+        
+        if ensemble_weights_found and weights_data and ('weights' in weights_data or 'ensemble_weights' in weights_data):
+            # Create advanced ensemble model and load weights
+            model = AdvancedEnsembleNBAPredictor()
+            model.weights = weights_data.get('weights', weights_data.get('ensemble_weights', {}))
+            model.feature_names = weights_data.get('feature_names', [])
+            model.is_trained = weights_data.get('is_trained', True)
+            if 'betting_thresholds' in weights_data:
+                model.betting_thresholds = weights_data['betting_thresholds']
+            model.model_type = 'advanced'
+            
+            # Load selected_feature_indices
+            selected_indices = weights_data.get('selected_feature_indices', None)
+            if selected_indices is not None:
+                model.selected_feature_indices = np.array(selected_indices)
+                print(f"Loaded feature selection indices: {len(model.selected_feature_indices)} features selected")
+            else:
+                model.selected_feature_indices = None
+            
+            # Load trained models and scaler if available
+            models_filename = weights_data.get('models_filename', weights_file.replace('.json', '_models.joblib'))
+            if models_filename.startswith('../'):
+                models_filename = models_filename[3:]  # Remove '../' prefix
+            try:
+                save_data = joblib.load(models_filename)
+                if isinstance(save_data, dict):
+                    # New format with models and scaler
+                    trained_models = save_data.get('models', {})
+                    model.scaler = save_data.get('scaler', None)
+                else:
+                    # Old format with just models
+                    trained_models = save_data
+                    model.scaler = None
+                
+                model.models.update(trained_models)
+                print(f"Loaded {len(trained_models)} trained models: {list(trained_models.keys())}")
+                if model.scaler is not None:
+                    print("Loaded fitted scaler")
+            except Exception as e:
+                print(f"Warning: Could not load trained models: {e}")
+            
+            print("Advanced ensemble loaded successfully from saved weights!")
+            return model
+        
+        # Fallback to training from scratch
         model = AdvancedEnsembleNBAPredictor()
         X, y = model.load_data()
-        model.initialize_models()
-        
-        from sklearn.model_selection import train_test_split
-        X_train, X_test, y_train, y_test = train_test_split(
-            X, y, test_size=0.2, random_state=42, stratify=y
-        )
-        
-        # Prepare odds data for training
-        odds_train = [model.odds[i] for i in range(len(X)) if i < len(X_train)]
-        odds_test = [model.odds[i] for i in range(len(X)) if i >= len(X_train)]
-        
-        model.train_stacking_ensemble(X_train, y_train, X_test, y_test)
-        model.train_voting_ensemble(X_train, y_train)
-        model.optimize_betting_thresholds(X_train, y_train, odds_train)
+        model.fit(X, y)  # Use the new fit method
         model.model_type = 'advanced'
         return model
         
     else:
         # Load neural network model
         try:
-            with open('json_files/weights.json', 'r') as f:
+            with open('data/weights.json', 'r') as f:
                 weights_data = json.load(f)
             model = PredictionNeuralNetwork(weights_data)
             model.weights_data = weights_data
@@ -214,6 +303,84 @@ star_players = [
 ]
 
 
+def pre_calculate_test_results(season_year, model_type='advanced'):
+    """
+    Add actual game results from Basketball Reference to the season JSON file.
+    
+    Args:
+        season_year (int): Season year
+        model_type (str): Type of model (not used, kept for compatibility)
+    
+    Returns:
+        bool: True if successful, False otherwise
+    """
+    print(f"Adding actual results to {season_year} season data...")
+    
+    # Load season data
+    season_file = f'data/{season_year}-season.json'
+    try:
+        with open(season_file, 'r') as f:
+            season_data = json.load(f)
+    except FileNotFoundError:
+        print(f"❌ Season file {season_file} not found")
+        return False
+    
+    # Get schedule data for actual results
+    print("Loading schedule data for actual results...")
+    matchups = get_schedule(season_year)
+    matchups = remove_injuries(matchups)
+    
+    # Create a mapping of game keys to actual results
+    actual_results = {}
+    for index, row in matchups.iterrows():
+        visitor = row['VISITOR']
+        home = row['HOME']
+        visitor_pts = row['VISITOR_PTS']
+        home_pts = row['HOME_PTS']
+        date = row['DATE'].strftime('%Y-%m-%d')
+        print(f"DEBUG: Visitor: {visitor}, Home: {home}, Visitor Pts: {visitor_pts}, Home Pts: {home_pts}, Date: {date}")
+        # Skip games without scores
+        if pd.isna(visitor_pts) or pd.isna(home_pts):
+            continue
+        
+        # Determine actual result (1 = away win, 0 = home win)
+        if visitor_pts > home_pts:
+            actual_result = 1
+        else:
+            actual_result = 0
+        
+        # Get team abbreviations
+        away_abbr = get_team_abbreviation(visitor)
+        home_abbr = get_team_abbreviation(home)
+        
+        # Create game key
+        game_key = f"{away_abbr}_vs_{home_abbr}_{date}"
+        
+        actual_results[game_key] = {
+            'actual_result': actual_result,
+            'away_pts': visitor_pts,
+            'home_pts': home_pts
+        }
+    
+    print(f"Found {len(actual_results)} games with actual results")
+    
+    # Add actual results to season data
+    games_processed = 0
+    for game_key, game_data in season_data.items():
+        if game_key in actual_results:
+            game_data['test_result'] = actual_results[game_key]
+            games_processed += 1
+    
+    # Save updated season data
+    try:
+        with open(season_file, 'w') as f:
+            json.dump(season_data, f, indent=2)
+        print(f"✅ Successfully added actual results to {games_processed} games in {season_file}")
+        return True
+    except Exception as e:
+        print(f"❌ Error saving actual results: {e}")
+        return False
+
 def remove_injuries(matchups, star_players=None):
     """
     Remove games where either team has a major injury to star players.
@@ -284,58 +451,57 @@ def main():
     
     # Load the selected model
     if model_choice == '2':
-        model = load_model('ensemble')
+        model = load_model('ensemble', season_year)
     elif model_choice == '3':
-        model = load_model('advanced')
+        model = load_model('advanced', season_year)
     else:
-        model = load_model('nn')
+        model = load_model('nn', season_year)
     
     if model is None:
         return
     
     # Get user input for betting options
     print("\nBetting Options:")
-    print("1. Enable betting calculations and ROI analysis")
-    print("   - Simulates betting on games using real odds data")
-    print("   - Calculates potential winnings/losses and ROI")
-    print("   - Shows bet amounts and betting performance")
-    print(f"   - Requires odds data from {season_data_file}")
-    print("2. Disable betting (prediction accuracy only)")
+    print("1. Interactive betting (manual betting on each game)")
+    print("   - You choose bet amount and side for each game")
+    print("   - See real-time balance updates")
+    print("   - Full control over betting strategy")
+    print("2. Prediction accuracy only (no betting)")
     print("   - Focuses purely on prediction accuracy")
     print("   - No betting calculations or financial analysis")
-    print("   - Faster execution and simpler output")
-    betting_choice = input("Enter 1 or 2: ").strip()
+    print("3. Pre-calculate test results (speed up future testing)")
+    print("   - Calculate all predictions and store in JSON file")
+    print("   - Future testing will be much faster")
+    betting_choice = input("Enter 1, 2, or 3: ").strip()
     
     enable_betting = betting_choice == '1'
-    base_bet = 0
     
-    if enable_betting:
-        print("\nBetting Configuration:")
-        print("1. Fixed bet amount")
-        print("   - Bet the same amount on every game")
-        print("   - Simple and consistent betting strategy")
-        print("   - Good for testing with a specific budget")
-        print("2. Variable bet based on confidence")
-        print("   - Bet more when prediction confidence is high")
-        print("   - Bet less when prediction confidence is medium")
-        print("   - Risk-adjusted betting strategy")
-        bet_type = input("Enter 1 or 2: ").strip()
-        
-        if bet_type == '1':
-            try:
-                base_bet = float(input("Enter fixed bet amount ($): "))
-            except ValueError:
-                print("Invalid amount. Using default $50.")
-                base_bet = 50
+    # Handle pre-calculation option
+    if betting_choice == '3':
+        print("\nPre-calculating test results...")
+        success = pre_calculate_test_results(season_year, model.model_type if hasattr(model, 'model_type') else 'advanced')
+        if success:
+            print("✅ Test results pre-calculated successfully!")
+            print("You can now run option 1 or 2 for faster testing.")
         else:
-            # Variable betting will be handled in the game loop
-            base_bet = 0
+            print("❌ Failed to pre-calculate test results.")
+        return
     
-    # Get the schedule data
-    print(f"Loading {season_year} season schedule...")
-    matchups = get_schedule(season_year)
-    matchups = remove_injuries(matchups)
-    print(f"Loaded {len(matchups)} games")
+    # Load season data from JSON file (contains both game data and odds)
+    season_file = f'data/{season_year}-season.json'
+    try:
+        with open(season_file, 'r') as f:
+            season_data = json.load(f)
+        print(f"Loaded {len(season_data)} games from {season_file}")
+    except FileNotFoundError:
+        print(f"❌ Season file {season_file} not found")
+        return
+    except Exception as e:
+        print(f"❌ Error loading season data: {e}")
+        return
+    
+    # Use season_data as playoff_dataset for odds checking
+    playoff_dataset = season_data
     
     # Initialize counters and tracking variables
     total_games = 0
@@ -343,40 +509,62 @@ def main():
     predictions = []
     winnings = 0
     
-    # Print header for results table
-    if enable_betting:
-        print("\n" + "="*120)
-        print(f"{'Date':<12} {'Away':<4} {'Home':<4} {'Away Pts':<8} {'Home Pts':<8} {'Actual':<8} {'Predicted':<10} {'Prob':<6} {'Bet':<6} {'Correct':<8}")
-        print("="*120)
-    else:
+    # Print header for results table (only when not betting)
+    if not enable_betting:
         print("\n" + "="*90)
         print(f"{'Date':<12} {'Away':<4} {'Home':<4} {'Away Pts':<8} {'Home Pts':<8} {'Actual':<8} {'Predicted':<10} {'Prob':<6} {'Correct':<8}")
         print("="*90)
     
-    # Process each game
-    for index, row in matchups.iterrows():
+    # Process each game from season data
+    for game_key, game_data in season_data.items():
         try:
-            # Extract game data
-            visitor = row['VISITOR']
-            home = row['HOME']
-            visitor_pts = row['VISITOR_PTS']
-            home_pts = row['HOME_PTS']
-            date = row['DATE'].strftime('%Y-%m-%d')
-            
-            # Skip games without scores (future games)
-            if pd.isna(visitor_pts) or pd.isna(home_pts):
+            # Extract game data from season JSON format
+            parts = game_key.split('_vs_')
+            if len(parts) != 2:
                 continue
             
-            # Determine actual result (1 = away win, 0 = home win)
-            if visitor_pts > home_pts:
-                actual_result = 1
+            away_abbr = parts[0]
+            home_date_part = parts[1]
+            
+            # Extract home team and date
+            last_underscore = home_date_part.rfind('_')
+            if last_underscore == -1:
+                continue
+            
+            home_abbr = home_date_part[:last_underscore]
+            date = home_date_part[last_underscore + 1:]
+            
+            # Check if we have test_results in the season JSON file
+            game_key = f"{away_abbr}_vs_{home_abbr}_{date}"
+            test_result = None
+            
+            # Try to load test_results from season data
+            try:
+                season_file = f'data/{season_year}-season.json'
+                with open(season_file, 'r') as f:
+                    season_data = json.load(f)
+                if game_key in season_data and 'test_result' in season_data[game_key]:
+                    test_result = season_data[game_key]['test_result']
+                    print(f"Using test_result from season file for {game_key}")
+            except:
+                pass
+            
+            if test_result is not None:
+                # Use stored test_results
+                actual_result = test_result['actual_result']
+                visitor_pts = test_result['away_pts']
+                home_pts = test_result['home_pts']
             else:
-                actual_result = 0
+                # Skip games without test_results (no actual game data)
+                continue
             
-            # Get team abbreviations
-            away_abbr = get_team_abbreviation(visitor)
-            home_abbr = get_team_abbreviation(home)
+            # Check if betting odds are available for this game
+            game_key = f"{away_abbr}_vs_{home_abbr}_{date}"
+            if enable_betting and (game_key not in playoff_dataset or 'home_odds' not in playoff_dataset[game_key]):
+                # Skip games without odds data when betting is enabled
+                continue
             
+            # Always calculate prediction in real-time (for betting interface)
             # Get team stats for feature creation
             away_stats = get_team_stats(away_abbr, season_year)
             home_stats = get_team_stats(home_abbr, season_year)
@@ -386,53 +574,152 @@ def main():
             
             # Use the selected model for prediction
             if hasattr(model, 'model_type') and model.model_type == 'ensemble':
-                pred = model.predict(features.reshape(1, -1))[0]
-                probability = model.predict_proba(features.reshape(1, -1))[0]
+                # For basic ensemble, we need to process features manually
+                features_processed = features.reshape(1, -1)
+                
+                # Scale features if scaler is available and fitted (for basic ensemble)
+                if hasattr(model, 'scaler') and model.scaler is not None:
+                    try:
+                        features_processed = model.scaler.transform(features_processed)
+                    except Exception as e:
+                        print(f"Warning: Scaler not fitted properly, using unscaled features: {e}")
+                
+                # Apply feature selection if the model was trained with feature selection
+                if hasattr(model, 'selected_feature_indices') and model.selected_feature_indices is not None:
+                    features_processed = features_processed[:, model.selected_feature_indices]
+                    print(f"Applied feature selection: {features_processed.shape[1]} features selected")
+                
+                pred = model.predict(features_processed)[0]
+                proba = model.predict_proba(features_processed)
+                probability = proba[0][1] if len(proba[0]) > 1 else proba[0][0]
+                
             elif hasattr(model, 'model_type') and model.model_type == 'advanced':
-                result = model.predict_with_confidence(features.reshape(1, -1))
-                pred = result['ensemble_prediction'][0]
-                probability = result['ensemble_probability'][0]
+                # For advanced ensemble, let the model handle feature processing
+                try:
+                    # Use predict_game_advanced which handles all feature processing internally
+                    result = model.predict_game_advanced(away_abbr, home_abbr)
+                    pred = result['ensemble_prediction']
+                    probability = result['ensemble_probability']
+                except (AttributeError, KeyError):
+                    # Fallback to standard predict methods
+                    features_processed = features.reshape(1, -1)
+                    
+                    # Scale features if scaler is available and fitted
+                    if hasattr(model, 'scaler') and model.scaler is not None:
+                        try:
+                            features_processed = model.scaler.transform(features_processed)
+                        except Exception as e:
+                            print(f"Warning: Scaler not fitted properly, using unscaled features: {e}")
+                    
+                    # Apply feature selection if available
+                    if hasattr(model, 'selected_feature_indices') and model.selected_feature_indices is not None:
+                        features_processed = features_processed[:, model.selected_feature_indices]
+                        print(f"Applied feature selection: {features_processed.shape[1]} features selected")
+                    
+                    pred = model.predict(features_processed)[0]
+                    proba = model.predict_proba(features_processed)
+                    probability = proba[0][1] if len(proba[0]) > 1 else proba[0][0]
             else:
                 probability = model.predict_probability(features.reshape(1, -1))[0][0]
                 pred = int(probability > 0.5)
             
-            # Calculate winnings if betting is enabled
+            # Determine if prediction was correct
+            correct = (pred == actual_result)
+            
+            # Interactive betting interface
             current_bet = 0
+            bet_side = None
             home_odds = 2.0
             away_odds = 2.0
             
             if enable_betting:
                 try:
-                    game_key = f"{away_abbr}_vs_{home_abbr}_{date}"
-                    if game_key in playoff_dataset:
-                        home_odds = playoff_dataset[game_key].get("home_odds", 2.0)
-                        away_odds = playoff_dataset[game_key].get("away_odds", 2.0)
-                        
-                        # Determine bet size based on configuration
-                        if bet_type == '1':
-                            # Fixed bet amount
-                            current_bet = base_bet
-                        else:
-                            # Variable bet based on confidence
-                            if probability > 0.7 or probability < 0.3:
-                                current_bet = 55  # High confidence
-                            elif 0.4 <= probability <= 0.6:
-                                current_bet = 40   # Medium confidence
+                    home_odds = playoff_dataset[game_key].get("home_odds", 2.0)
+                    away_odds = playoff_dataset[game_key].get("away_odds", 2.0)
+                    
+                    # Show game info and model prediction (without score)
+                    print(f"\n{'='*60}")
+                    print(f"GAME: {away_abbr} @ {home_abbr} - {date}")
+                    print(f"MODEL PREDICTION: {'Away Win' if pred == 1 else 'Home Win'} (Confidence: {probability:.1%})")
+                    print(f"ODDS: {away_abbr} {away_odds:.2f} | {home_abbr} {home_odds:.2f}")
+                    print(f"CURRENT BALANCE: ${winnings:.2f}")
+                    print(f"{'='*60}")
+                    
+                    # Get user bet
+                    while True:
+                        try:
+                            bet_input = input("Enter bet amount (or '0' to skip, 'q' to quit): $").strip()
+                            if bet_input.lower() == 'q':
+                                print("\n" + "="*60)
+                                print("QUITTING - FINAL RESULTS")
+                                print("="*60)
+                                
+                                # Calculate final statistics
+                                total_games_played = len([p for p in predictions if p.get('bet_amount', 0) > 0])
+                                total_bet = sum(p.get('bet_amount', 0) for p in predictions)
+                                roi = (winnings / total_bet * 100) if total_bet > 0 else 0
+                                
+                                print(f"Games Bet On: {total_games_played}")
+                                print(f"Total Amount Bet: ${total_bet:.2f}")
+                                print(f"Final Balance: ${winnings:.2f}")
+                                print(f"Total Profit/Loss: ${winnings:.2f}")
+                                print(f"ROI: {roi:.2f}%")
+                                
+                                if total_games_played > 0:
+                                    winning_bets = len([p for p in predictions if p.get('bet_amount', 0) > 0 and 
+                                                       ((p.get('bet_side') == 'away' and p.get('actual') == 1) or 
+                                                        (p.get('bet_side') == 'home' and p.get('actual') == 0))])
+                                    bet_accuracy = (winning_bets / total_games_played * 100) if total_games_played > 0 else 0
+                                    print(f"Betting Accuracy: {bet_accuracy:.1f}% ({winning_bets}/{total_games_played})")
+                                
+                                print("="*60)
+                                return
+                            elif bet_input == '0':
+                                current_bet = 0
+                                bet_side = None
+                                break
                             else:
-                                current_bet = 25   # Low confidence
-                        
-                        # Calculate winnings
-                        if pred == 0 and actual_result == 0:  # Predicted home win, home won
-                            winnings += current_bet * home_odds - current_bet
-                        elif pred == 1 and actual_result == 1:  # Predicted away win, away won
+                                current_bet = float(bet_input)
+                                if current_bet <= 0:
+                                    print("Bet amount must be positive!")
+                                    continue
+                                
+                                # Get bet side
+                                print(f"Bet on: 1) {away_abbr} (Away) or 2) {home_abbr} (Home)?")
+                                side_input = input("Enter 1 or 2: ").strip()
+                                if side_input == '1':
+                                    bet_side = 'away'
+                                    break
+                                elif side_input == '2':
+                                    bet_side = 'home'
+                                    break
+                                else:
+                                    print("Invalid choice! Enter 1 or 2.")
+                                    continue
+                        except ValueError:
+                            print("Invalid bet amount! Enter a number.")
+                            continue
+                    
+                    # Show the actual result and calculate winnings
+                    print(f"\nACTUAL RESULT: {away_abbr} {visitor_pts} - {home_abbr} {home_pts}")
+                    
+                    # Calculate winnings based on bet
+                    if current_bet > 0 and bet_side:
+                        if bet_side == 'away' and actual_result == 1:  # Bet away, away won
                             winnings += current_bet * away_odds - current_bet
-                        else:  # Wrong prediction
+                            print(f"✓ WIN! +${current_bet * away_odds - current_bet:.2f}")
+                        elif bet_side == 'home' and actual_result == 0:  # Bet home, home won
+                            winnings += current_bet * home_odds - current_bet
+                            print(f"✓ WIN! +${current_bet * home_odds - current_bet:.2f}")
+                        else:  # Lost bet
                             winnings -= current_bet
+                            print(f"✗ LOSS! -${current_bet:.2f}")
                     else:
-                        # No odds data available
-                        current_bet = 0
+                        print("No bet placed")
+                    
+                    print(f"NEW BALANCE: ${winnings:.2f}")
                 except Exception as e:
-                    print(f"Error calculating winnings for {date}: {e}")
+                    print(f"Error processing betting for {date}: {e}")
                     current_bet = 0
             
             # Update counters
@@ -456,20 +743,18 @@ def main():
             
             if enable_betting:
                 prediction_data.update({
-                    'base_bet': current_bet,
+                    'bet_amount': current_bet,
+                    'bet_side': bet_side,
                     'winnings': winnings
                 })
             
             predictions.append(prediction_data)
             
-            # Print result for current game
-            actual_str = "Away" if actual_result == 1 else "Home"
-            predicted_str = "Away" if pred == 1 else "Home"
-            correct_str = "✓" if correct else "✗"
-            
-            if enable_betting:
-                print(f"{date:<12} {away_abbr:<4} {home_abbr:<4} {visitor_pts:<8} {home_pts:<8} {actual_str:<8} {predicted_str:<10} {probability:<6.2f} {current_bet:<6} {correct_str:<8}")
-            else:
+            # Print result for current game (only when not betting)
+            if not enable_betting:
+                actual_str = "Away" if actual_result == 1 else "Home"
+                predicted_str = "Away" if pred == 1 else "Home"
+                correct_str = "✓" if correct else "✗"
                 print(f"{date:<12} {away_abbr:<4} {home_abbr:<4} {visitor_pts:<8} {home_pts:<8} {actual_str:<8} {predicted_str:<10} {probability:<6.2f} {correct_str:<8}")
             
         except Exception as e:
@@ -493,10 +778,10 @@ def main():
     
     if enable_betting:
         # Calculate total amount bet and ROI
-        total_bet = sum(p.get('base_bet', 0) for p in predictions if 'base_bet' in p)
+        total_bet = sum(p.get('bet_amount', 0) for p in predictions if 'bet_amount' in p)
         roi = (winnings / total_bet * 100) if total_bet > 0 else 0
         
-        print(f"Total Amount Bet: ${total_bet}")
+        print(f"Total Amount Bet: ${total_bet:.2f}")
         print(f"Total Winnings: ${winnings:.2f}")
         print(f"ROI: {roi:.2f}%")
     

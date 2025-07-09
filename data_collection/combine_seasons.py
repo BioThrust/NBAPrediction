@@ -21,7 +21,7 @@ def combine_season_data(season_years, output_file=None):
         dict: Combined dataset
     """
     if output_file is None:
-        output_file = '../json_files/combined-seasons.json'
+        output_file = '../data/combined-seasons.json'
     
     combined_data = {}
     total_games = 0
@@ -29,7 +29,7 @@ def combine_season_data(season_years, output_file=None):
     print(f"Combining data from {len(season_years)} seasons...")
     
     for season_year in season_years:
-        season_file = f'../json_files/{season_year}-season.json'
+        season_file = f'../data/{season_year}-season.json'
         
         if not os.path.exists(season_file):
             print(f"Warning: {season_file} not found, skipping...")
@@ -84,7 +84,7 @@ def main():
     
     for arg in sys.argv[1:]:
         if arg.endswith('.json'):
-            output_file = f'../json_files/{arg}'
+            output_file = f'../data/{arg}'
         else:
             try:
                 season_year = int(arg)

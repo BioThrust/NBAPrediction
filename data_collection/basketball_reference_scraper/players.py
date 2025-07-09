@@ -38,21 +38,21 @@ def get_stats(_name, stat_type='PER_GAME', playoffs=False, career=False, ask_mat
     name = lookup(_name, ask_matches)
     suffix = get_player_suffix(name)
     
+    # Handle case where player suffix is not found
     if not suffix:
+        print(f"Could not find player suffix for '{name}'")
         return pd.DataFrame()
     
     stat_type = stat_type.lower()
     table = None
     
+    # Use Selenium as default for all stat types
+    from .request_utils import get_selenium_wrapper
+    
     # Handle different stat types
     if stat_type in ['per_game', 'totals', 'advanced'] and not playoffs:
-        r = get_wrapper(f'https://www.basketball-reference.com/{suffix}')
-        if r.status_code == 200:
-            soup = BeautifulSoup(r.content, 'html.parser')
-            table = soup.find('table', {'id': stat_type})
-            table = str(table)
-        else:
-            raise ConnectionError('Request to basketball reference failed')
+        xpath = f"//table[@id='{stat_type}']"
+        table = get_selenium_wrapper(f'https://www.basketball-reference.com/{suffix}', xpath)
     elif stat_type in ['per_minute', 'per_poss'] or playoffs:
         if playoffs:
             xpath = f"//table[@id='playoffs_{stat_type}']"
@@ -115,8 +115,15 @@ def get_game_logs(_name, year, playoffs=False, ask_matches=True):
     Raises:
         ConnectionError: If request to Basketball Reference fails
     """
-    name = lookup(_name, ask_matches)
-    suffix = get_player_suffix(name).replace('.html', '')
+    # name = lookup(_name, ask_matches)
+    suffix = get_player_suffix(_name)
+    
+    # Handle case where player suffix is not found
+    if suffix is None:
+        print(f"Could not find player suffix for '{name}'")
+        return pd.DataFrame()
+    
+   
     
     # Determine URL and selector based on playoffs parameter
     if playoffs:
@@ -126,39 +133,36 @@ def get_game_logs(_name, year, playoffs=False, ask_matches=True):
         selector = 'player_game_log_reg'
         url = f'https://www.basketball-reference.com/{suffix}/gamelog/{year}'
     
-    r = get_wrapper(url)
+    # Use Selenium as default
+    from .request_utils import get_selenium_wrapper
+    xpath = f"//table[@id='{selector}']"
+    table_html = get_selenium_wrapper(url, xpath)
     
-    if r.status_code == 200:
-        soup = BeautifulSoup(r.content, 'html.parser')
-        table = soup.find('table', {'id': selector})
-        
-        if table is None:
-            print("No suitable table found")
-            return pd.DataFrame()
-        
-        # Parse the game logs table
-        df = pd.read_html(str(table))[0]
-        
-        # Rename columns for consistency
-        df.rename(columns={'Date': 'DATE', 'Age': 'AGE', 'Team': 'TEAM', 
-                          'Unnamed: 5': 'HOME/AWAY', 'Opp': 'OPPONENT',
-                          'Unnamed: 7': 'RESULT', 'GmSc': 'GAME_SCORE', 
-                          'Series': 'SERIES'}, inplace=True)
-        
-        # Convert HOME/AWAY column
-        df['HOME/AWAY'] = df['HOME/AWAY'].apply(lambda x: 'AWAY' if x == '@' else 'HOME')
-        
-        # Remove header rows and unnecessary columns
-        df = df[df['Rk'] != 'Rk']
-        df = df.drop(['Rk', 'Gtm'], axis=1).reset_index(drop=True)
-        
-        # Convert date column to datetime (only for regular season)
-        if not playoffs:
-            df['DATE'] = pd.to_datetime(df['DATE'])
-        
-        return df
-    else:
-        raise ConnectionError('Request to basketball reference failed')
+    if table_html is None:
+        print("No suitable table found")
+        return pd.DataFrame()
+    
+    # Parse the game logs table
+    df = pd.read_html(table_html)[0]
+    
+    # Rename columns for consistency
+    df.rename(columns={'Date': 'DATE', 'Age': 'AGE', 'Team': 'TEAM', 
+                      'Unnamed: 5': 'HOME/AWAY', 'Opp': 'OPPONENT',
+                      'Unnamed: 7': 'RESULT', 'GmSc': 'GAME_SCORE', 
+                      'Series': 'SERIES'}, inplace=True)
+    
+    # Convert HOME/AWAY column
+    df['HOME/AWAY'] = df['HOME/AWAY'].apply(lambda x: 'AWAY' if x == '@' else 'HOME')
+    
+    # Remove header rows and unnecessary columns
+    df = df[df['Rk'] != 'Rk']
+    df = df.drop(['Rk', 'Gtm'], axis=1).reset_index(drop=True)
+    
+    # Convert date column to datetime (only for regular season)
+    if not playoffs:
+        df['DATE'] = pd.to_datetime(df['DATE'])
+    
+    return df
 
 
 def get_player_headshot(_name, ask_matches=True):

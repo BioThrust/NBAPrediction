@@ -27,26 +27,45 @@ echo 3. Generate the %SEASON_YEAR% season dataset
 echo 4. Cache team statistics for faster future runs
 echo.
 
-echo Running playoff_data.py for %SEASON_YEAR% season...
-python -m data_collection.playoff_data %SEASON_YEAR%
+echo Running data_scraper_main.py for %SEASON_YEAR% season...
+python -m data_collection.data_scraper_main %SEASON_YEAR%
+set PYTHON_EXIT_CODE=%ERRORLEVEL%
 
-if %ERRORLEVEL% EQU 0 (
+echo.
+echo DEBUG: Python script finished with exit code: %PYTHON_EXIT_CODE%
+
+REM Add a small delay to ensure ERRORLEVEL is properly set
+timeout /t 1 /nobreak >nul
+
+echo DEBUG: After delay, exit code is: %PYTHON_EXIT_CODE%
+
+if %PYTHON_EXIT_CODE% EQU 0 (
     echo.
     echo ========================================
     echo Data collection completed successfully!
     echo ========================================
     echo.
     echo Files created:
-    echo - json_files/%SEASON_YEAR%-season.json (main dataset)
-    echo - json_files/team_stats_cache_%SEASON_YEAR%.json (cached team stats)
+    if exist "data\%SEASON_YEAR%-season.json" (
+        echo - data/%SEASON_YEAR%-season.json ✓
+    ) else (
+        echo - data/%SEASON_YEAR%-season.json ✗ (file not found)
+    )
+    if exist "data\%SEASON_YEAR%_team_stats_cache.json" (
+        echo - data/team_stats_cache_%SEASON_YEAR%.json ✓
+    ) else (
+        echo - data/team_stats_cache_%SEASON_YEAR%.json ✗ (file not found)
+    )
     echo.
     echo You can now run train_model.bat to train the neural network.
-) else (
+) 
+if %PYTHON_EXIT_CODE% NEQ 0 (
     echo.
     echo ========================================
     echo Error: Data collection failed!
     echo ========================================
     echo.
+    echo Python script exited with code: %PYTHON_EXIT_CODE%
     echo Please check the error messages above and try again.
     echo Make sure you have all required dependencies installed.
 )
@@ -70,13 +89,19 @@ for %%s in (%SEASONS_PARSED%) do (
     echo ========================================
     echo Processing season %%s...
     echo ========================================
-    echo Running playoff_data.py for %%s season...
-    python -m data_collection.playoff_data %%s
+    echo Running data_scraper_main.py for %%s season...
+    python -m data_collection.data_scraper_main %%s
+    set PYTHON_EXIT_CODE=!ERRORLEVEL!
     
-    if !ERRORLEVEL! EQU 0 (
+    echo DEBUG: Season %%s finished with exit code: !PYTHON_EXIT_CODE!
+    
+    REM Add a small delay to ensure ERRORLEVEL is properly set
+    timeout /t 1 /nobreak >nul
+    
+    if !PYTHON_EXIT_CODE! EQU 0 (
         echo Season %%s completed successfully!
     ) else (
-        echo Error: Season %%s failed!
+        echo Error: Season %%s failed with exit code !PYTHON_EXIT_CODE!
     )
 )
 
@@ -87,15 +112,15 @@ echo ========================================
 echo.
 echo Files created:
 for %%s in (%SEASONS_PARSED%) do (
-    if exist "json_files\%%s-season.json" (
-        echo - json_files/%%s-season.json ✓
+    if exist "data\%%s-season.json" (
+        echo - data/%%s-season.json ✓
     ) else (
-        echo - json_files/%%s-season.json ✗ (failed)
+        echo - data/%%s-season.json ✗ (failed)
     )
-    if exist "json_files\team_stats_cache_%%s.json" (
-        echo - json_files/team_stats_cache_%%s.json ✓
+    if exist "data\team_stats_cache_%%s.json" (
+        echo - data/team_stats_cache_%%s.json ✓
     ) else (
-        echo - json_files/team_stats_cache_%%s.json ✗ (failed)
+        echo - data/team_stats_cache_%%s.json ✗ (failed)
     )
 )
 echo.

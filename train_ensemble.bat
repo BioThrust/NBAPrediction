@@ -40,7 +40,7 @@ echo.
 
 set /p SEASON_INPUT="Enter season year or 'combined': "
 
-cd ensemble_models
+cd models
 
 echo Running ensemble training...
 if not "%SEASON_INPUT%"=="" (
@@ -61,12 +61,14 @@ if %ERRORLEVEL% EQU 0 (
     echo You can now run run_prediction.bat to make predictions with ensemble models.
     echo.
     echo Files created:
-    echo - Ensemble model weights and configurations
+    echo - data/[year]_ensemble_basic_weights.json (basic ensemble weights)
+    echo - data/[year]_ensemble_advanced_weights.json (advanced ensemble weights)
     echo - Training performance metrics
     echo.
     echo Tip: Use option 2 (Basic Ensemble) or option 3 (Advanced Ensemble) 
     echo when running predictions for best results.
-) else (
+) 
+if %ERRORLEVEL% NEQ 0 (
     echo.
     echo ========================================
     echo Error: Ensemble training failed!
@@ -76,7 +78,7 @@ if %ERRORLEVEL% EQU 0 (
     echo Make sure you have:
     echo 1. Run collect_data.bat first to generate the dataset
     echo 2. Run train_model.bat to create the neural network weights
-    echo 3. All required dependencies installed (pip install -r ensemble_models/requirements_ensemble.txt)
+    echo 3. All required dependencies installed (pip install -r models/requirements_ensemble.txt)
     echo 4. Sufficient disk space and memory
 )
 

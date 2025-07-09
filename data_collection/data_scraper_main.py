@@ -108,6 +108,7 @@ def main(season_year=None):
         season_year (int, optional): NBA season year. If None, uses config default.
     """
     # Use provided season year or default from config
+    # print(season_year)
     if season_year is None:
         season_year = SEASON_YEAR
     
@@ -184,14 +185,14 @@ def main(season_year=None):
     
     # Save the processed dataset
     print("Saving processed dataset...")
-    season_data_file = f'json_files/{season_year}-season.json'
+    season_data_file = f'data/{season_year}-season.json'
     with open(season_data_file, 'w') as f:
         json.dump(playoff_dataset, f, indent=4)
     print(f"Dataset saved successfully to {season_data_file}!")
     
     # Now scrape odds data for betting analysis
     print("\n" + "="*60)
-    print("SCRAPING ODDS DATA FOR BETTING ANALYSIS")
+    print("SCRAPING ODDS DATA FOR TRAINING")
     print("="*60)
     
     # Date mapping for odds portal
@@ -346,6 +347,7 @@ def main(season_year=None):
 
 if __name__ == "__main__":
     if len(sys.argv) > 1:
+        # print(f"Collecting data for {sys.argv[1]} season...")
         season_year = int(sys.argv[1])
     else:
         season_year = SEASON_YEAR

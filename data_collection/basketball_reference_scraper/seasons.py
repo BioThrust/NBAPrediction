@@ -42,15 +42,36 @@ def get_schedule(season, playoffs=False):
     
     df = pd.DataFrame()
     
+    # Use Selenium as default for all scraping
+    from .request_utils import get_selenium_wrapper
+    
     # Scrape each month's schedule
     for month in months:
-        r = get_wrapper(f'https://www.basketball-reference.com/leagues/NBA_{season}_games-{month.lower()}.html')
-        if r.status_code == 200:
-            soup = BeautifulSoup(r.content, 'html.parser')
-            table = soup.find('table', attrs={'id': 'schedule'})
-            if table:
-                month_df = pd.read_html(str(table))[0]
+        try:
+            print(f"Scraping {month} schedule for {season} season...")
+            
+            url = f'https://www.basketball-reference.com/leagues/NBA_{season}_games-{month.lower()}.html'
+            table_html = get_selenium_wrapper(url, "//table[@id='schedule']")
+            
+            if table_html:
+                month_df = pd.read_html(table_html)[0]
                 df = pd.concat([df, month_df])
+                print(f"Successfully scraped {len(month_df)} games from {month}")
+            else:
+                print(f"No schedule table found for {month}")
+        except Exception as e:
+            print(f"Error scraping {month} schedule: {e}")
+            continue
+
+    # Check if we got any data
+    if df.empty:
+        print(f"ERROR: No schedule data was successfully scraped for {season} season!")
+        print("This could be due to:")
+        print("1. Rate limiting from Basketball Reference")
+        print("2. Changes in the website structure")
+        print("3. Network connectivity issues")
+        print("4. The season data may not be available yet")
+        raise ValueError(f"No schedule data available for {season} season")
 
     # Clean up the DataFrame
     df = df.reset_index()
@@ -64,6 +85,20 @@ def get_schedule(season, playoffs=False):
     cols_to_remove += [i for i in df.columns if 'LOG' in i]
     cols_to_remove += ['index']
     df = df.drop(cols_to_remove, axis=1)
+    
+    # Clean the data - remove header rows and invalid entries
+    print(f"Cleaning data... Original shape: {df.shape}")
+    
+    # Remove rows where DATE column contains header text
+    df = df[~df.iloc[:, 0].str.contains('Date', case=False, na=False)]
+    df = df[~df.iloc[:, 0].str.contains('GAME', case=False, na=False)]
+    df = df[~df.iloc[:, 0].str.contains('HOME', case=False, na=False)]
+    
+    # Remove rows with NaN or empty values in DATE column
+    df = df.dropna(subset=[df.columns[0]])
+    df = df[df.iloc[:, 0].str.strip() != '']
+    
+    print(f"After cleaning: {df.shape}")
     
     # Rename columns for consistency
     df.columns = ['DATE', 'VISITOR', 'VISITOR_PTS', 'HOME', 'HOME_PTS']
@@ -106,9 +141,20 @@ def get_schedule(season, playoffs=False):
         else:
             df = df[:playoff_index]
         
-        # Convert dates to datetime
-        df['DATE'] = df['DATE'].apply(lambda x: pd.to_datetime(x))
+        # Convert dates to datetime with error handling
+        def safe_datetime_convert(x):
+            try:
+                return pd.to_datetime(x)
+            except:
+                print(f"Warning: Could not parse date '{x}', skipping...")
+                return pd.NaT
+        
+        df['DATE'] = df['DATE'].apply(safe_datetime_convert)
+        
+        # Remove rows with invalid dates
+        df = df.dropna(subset=['DATE'])
     
+    print(f"Successfully processed {len(df)} games for {season} season")
     return df
 
 

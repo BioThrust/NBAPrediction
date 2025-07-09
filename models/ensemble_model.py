@@ -16,6 +16,17 @@ from sklearn.metrics import accuracy_score, classification_report
 import xgboost as xgb
 import sys
 import os
+from sklearn.linear_model import RidgeClassifier
+try:
+    import catboost as cb
+    CATBOOST_AVAILABLE = True
+except ImportError:
+    CATBOOST_AVAILABLE = False
+try:
+    import lightgbm as lgb
+    LIGHTGBM_AVAILABLE = True
+except ImportError:
+    LIGHTGBM_AVAILABLE = False
 
 # Add parent directory to path to import utils
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -34,7 +45,8 @@ class EnsembleNBAPredictor:
     and Neural Network models to improve prediction accuracy and robustness.
     """
     
-    def __init__(self):
+    def __init__(self, *args, **kwargs):
+        self.model_type = 'ensemble'
         """
         Initialize ensemble model with multiple algorithms.
         """
@@ -45,7 +57,7 @@ class EnsembleNBAPredictor:
     
     def get_data_file_path(self, filename):
         project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        return os.path.join(project_root, 'json_files', filename)
+        return os.path.join(project_root, 'data', filename)
     
     def load_data(self, data_file=None):
         """
@@ -116,38 +128,104 @@ class EnsembleNBAPredictor:
         """
         print("Initializing ensemble models...")
         
-        # XGBoost - often best for sports prediction
+        # XGBoost - often best for sports prediction with optimized parameters
         self.models['xgboost'] = xgb.XGBClassifier(
             objective='binary:logistic',
-            n_estimators=1000,
+            n_estimators=1200,
             learning_rate=0.01,
-            max_depth=6,
+            max_depth=7,
+            subsample=0.85,
+            colsample_bytree=0.85,
+            reg_alpha=0.1,
+            reg_lambda=1.0,
+            random_state=42,
+            eval_metric='logloss'
+        )
+        
+        # Second XGBoost with different parameters for diversity
+        self.models['xgboost_fast'] = xgb.XGBClassifier(
+            objective='binary:logistic',
+            n_estimators=600,
+            learning_rate=0.05,
+            max_depth=5,
             subsample=0.8,
             colsample_bytree=0.8,
             random_state=42,
             eval_metric='logloss'
         )
         
-        # Random Forest - good for interpretability
+        # Random Forest - good for interpretability with optimized parameters
         self.models['random_forest'] = RandomForestClassifier(
-            n_estimators=200,
-            max_depth=10,
-            min_samples_split=5,
-            min_samples_leaf=2,
+            n_estimators=300,
+            max_depth=12,
+            min_samples_split=3,
+            min_samples_leaf=1,
+            max_features='sqrt',
+            bootstrap=True,
             random_state=42,
             n_jobs=-1
         )
         
-        # Logistic Regression - good baseline
+        # Extra Trees for diversity
+        self.models['extra_trees'] = RandomForestClassifier(
+            n_estimators=200,
+            max_depth=10,
+            min_samples_split=2,
+            min_samples_leaf=1,
+            max_features='sqrt',
+            bootstrap=False,  # Extra Trees don't use bootstrap
+            random_state=42,
+            n_jobs=-1
+        )
+        
+        # Logistic Regression - good baseline with regularization
         self.models['logistic'] = LogisticRegression(
             random_state=42,
-            max_iter=1000,
-            C=1.0
+            max_iter=2000,
+            C=0.1,
+            penalty='l2',
+            solver='liblinear'
         )
+        
+        # Ridge Classifier for diversity
+        self.models['ridge'] = RidgeClassifier(
+            random_state=42,
+            alpha=0.5
+        )
+        
+        # Add CatBoost if available
+        if CATBOOST_AVAILABLE:
+            self.models['catboost'] = cb.CatBoostClassifier(
+                iterations=800,
+                learning_rate=0.05,
+                depth=6,
+                l2_leaf_reg=3,
+                bootstrap_type='Bernoulli',
+                subsample=0.8,
+                random_state=42,
+                verbose=False
+            )
+            print("CatBoost model added")
+        
+        # Add LightGBM if available
+        if LIGHTGBM_AVAILABLE:
+            self.models['lightgbm'] = lgb.LGBMClassifier(
+                n_estimators=800,
+                learning_rate=0.05,
+                max_depth=6,
+                num_leaves=31,
+                subsample=0.8,
+                colsample_bytree=0.8,
+                reg_alpha=0.1,
+                reg_lambda=1.0,
+                random_state=42,
+                verbose=-1
+            )
+            print("LightGBM model added")
         
         # Neural Network (load existing trained model)
         try:
-            with open('../json_files/weights.json', 'r') as f:
+            with open('../data/weights.json', 'r') as f:
                 weights_data = json.load(f)
             self.models['neural_net'] = PredictionNeuralNetwork(weights_data)
             print("Loaded existing neural network")
@@ -238,34 +316,71 @@ class EnsembleNBAPredictor:
     
     def predict_proba(self, X):
         """
-        Get weighted probability predictions from all models.
+        Predict class probabilities for samples in X.
         
         Args:
             X (np.array): Input features
         
         Returns:
-            np.array: Weighted ensemble probabilities
+            np.array: Class probabilities of shape (n_samples, 2)
         """
         if not self.is_trained:
-            raise ValueError("Models must be trained before prediction")
+            raise ValueError("Model must be trained before making predictions")
         
-        predictions = {}
-        
-        # Get predictions from each model
+        all_probs = []
         for name, model in self.models.items():
-            if model is not None:
-                if name == 'neural_net':
-                    pred = model.predict_probability(X)[:, 0]  # Neural net returns different format
-                else:
-                    pred = model.predict_proba(X)[:, 1]  # Probability of positive class
-                predictions[name] = pred
+            if model is not None and name != 'neural_net':
+                try:
+                    prob = model.predict_proba(X)[:, 1]
+                except AttributeError:
+                    try:
+                        decision_scores = model.decision_function(X)
+                        prob = 1 / (1 + np.exp(-decision_scores))
+                    except AttributeError:
+                        prob = model.predict(X).astype(float)
+                all_probs.append(prob)
         
-        # Calculate weighted ensemble prediction
-        ensemble_pred = np.zeros(len(X))
-        for name, pred in predictions.items():
-            ensemble_pred += self.weights[name] * pred
+        if all_probs:
+            # Weighted average of probabilities
+            weights = np.array([self.weights.get(name, 1.0/len(all_probs)) 
+                              for name in self.models.keys() 
+                              if name != 'neural_net' and self.models[name] is not None])
+            weights = weights / weights.sum()  # Normalize weights
+            
+            ensemble_prob = np.zeros(len(X))
+            for i, prob in enumerate(all_probs):
+                ensemble_prob += weights[i] * prob
+            
+            return np.column_stack([1 - ensemble_prob, ensemble_prob])
         
-        return ensemble_pred
+        # Final fallback
+        return np.column_stack([np.zeros(len(X)), np.ones(len(X))])
+    
+    def fit(self, X, y):
+        """
+        Fit the ensemble model (required for sklearn compatibility).
+        
+        Args:
+            X (np.array): Training features
+            y (np.array): Training labels
+        """
+        # If models are already trained and loaded, don't retrain
+        if self.is_trained and len(self.models) > 0:
+            # Check if models are actually fitted
+            fitted_models = 0
+            for name, model in self.models.items():
+                if model is not None and hasattr(model, 'classes_'):
+                    fitted_models += 1
+            
+            if fitted_models > 0:
+                print(f"Using {fitted_models} pre-trained models (skipping retraining)")
+                return self
+        
+        # Only train if not already trained
+        if not self.is_trained:
+            self.initialize_models()
+            self.train_models(X, y)
+        return self
     
     def predict(self, X, threshold=0.5):
         """
@@ -279,7 +394,21 @@ class EnsembleNBAPredictor:
             np.array: Binary predictions (0 or 1)
         """
         probabilities = self.predict_proba(X)
-        return (probabilities > threshold).astype(int)
+        return (probabilities[:, 1] > threshold).astype(int)
+    
+    def get_params(self, deep=True):
+        """
+        Get parameters for this estimator (required for sklearn compatibility).
+        Only include true constructor parameters.
+        """
+        return {}
+    
+    def set_params(self, **params):
+        """
+        Set the parameters of this estimator (required for sklearn compatibility).
+        Only include true constructor parameters.
+        """
+        return self
     
     def evaluate_ensemble(self, X_test, y_test):
         """
@@ -325,7 +454,7 @@ class EnsembleNBAPredictor:
         features = features.reshape(1, -1)
         
         # Get ensemble prediction
-        probability = self.predict_proba(features)[0]
+        probability = self.predict_proba(features)[0, 1]
         prediction = self.predict(features)[0]
         
         # Determine winner
@@ -346,7 +475,7 @@ class EnsembleNBAPredictor:
             'prediction': prediction
         }
     
-    def save_ensemble(self, filename='json_files/ensemble_weights.json'):
+    def save_ensemble(self, filename='data/ensemble_weights.json'):
         """
         Save ensemble weights and model information to file.
         
@@ -356,14 +485,19 @@ class EnsembleNBAPredictor:
         ensemble_data = {
             'weights': self.weights,
             'feature_names': self.feature_names,
-            'is_trained': self.is_trained
+            'is_trained': self.is_trained,
+            'selected_feature_indices': getattr(self, 'selected_feature_indices', None)
         }
+        
+        # Convert numpy arrays to lists for JSON serialization
+        if ensemble_data['selected_feature_indices'] is not None:
+            ensemble_data['selected_feature_indices'] = ensemble_data['selected_feature_indices'].tolist()
         
         with open(filename, 'w') as f:
             json.dump(ensemble_data, f, indent=2)
         print(f"Ensemble saved to {filename}")
     
-    def load_ensemble(self, filename='json_files/ensemble_weights.json'):
+    def load_ensemble(self, filename='data/ensemble_weights.json'):
         """
         Load ensemble weights and model information from file.
         
@@ -377,6 +511,13 @@ class EnsembleNBAPredictor:
             self.weights = ensemble_data['weights']
             self.feature_names = ensemble_data['feature_names']
             self.is_trained = ensemble_data['is_trained']
+            
+            # Convert selected_feature_indices from list back to numpy array
+            selected_indices = ensemble_data.get('selected_feature_indices', None)
+            if selected_indices is not None:
+                self.selected_feature_indices = np.array(selected_indices)
+            else:
+                self.selected_feature_indices = None
             
             print(f"Ensemble loaded from {filename}")
         except FileNotFoundError:

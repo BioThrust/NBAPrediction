@@ -12,13 +12,12 @@ except:
 
 
 def get_roster(team, season_end_year):
-    r = get_wrapper(
-        f'https://www.basketball-reference.com/teams/{team}/{season_end_year}.html')
-    df = None
-    if r.status_code == 200:
-        soup = BeautifulSoup(r.content, 'html.parser')
-        table = soup.find('table', {'id': 'roster'})
-        df = pd.read_html(str(table))[0]
+    # Use Selenium as default
+    xpath = "//table[@id='roster']"
+    table_html = get_selenium_wrapper(f'https://www.basketball-reference.com/teams/{team}/{season_end_year}.html', xpath)
+    
+    if table_html:
+        df = pd.read_html(table_html)[0]
         df.columns = ['NUMBER', 'PLAYER', 'POS', 'HEIGHT', 'WEIGHT', 'BIRTH_DATE',
                       'NATIONALITY', 'EXPERIENCE', 'COLLEGE']
         # remove rows with no player name (this was the issue above)
@@ -30,8 +29,10 @@ def get_roster(team, season_end_year):
             lambda x: pd.to_datetime(x) if pd.notna(x) else pd.NaT)
         df['NATIONALITY'] = df['NATIONALITY'].apply(
             lambda x: x.upper() if pd.notna(x) else '')
-
     return df
+    else:
+        print("No roster table found")
+        return None
 
 
 def get_team_stats(team, season_end_year, data_format='TOTALS'):
@@ -122,12 +123,16 @@ def get_roster_stats(team: list, season_end_year: int, data_format='PER_GAME', p
     return df
 
 def get_team_ratings(season_end_year: int, team=[]):
-    r = get_wrapper(f'https://www.basketball-reference.com/leagues/NBA_{season_end_year}_ratings.html')
-    if r.status_code == 200:
-        soup = BeautifulSoup(r.content, 'html.parser')
-        table = soup.find('table', { 'id': 'ratings' })
+    # Use Selenium as default
+    xpath = "//table[@id='ratings']"
+    table_html = get_selenium_wrapper(f'https://www.basketball-reference.com/leagues/NBA_{season_end_year}_ratings.html', xpath)
     
-        df = pd.read_html(str(table))[0]
+    if table_html:
+        df = pd.read_html(table_html)[0]
+    else:
+        print("No ratings table found")
+        return pd.DataFrame()
+    
         # Clean columns and indexes
         df = df.droplevel(level=0, axis=1)
         
@@ -154,5 +159,96 @@ def get_team_ratings(season_end_year: int, team=[]):
                 df = df[df['TEAM'].isin(team)]
         df = df.reindex()
         return df
-    else:
+
+def get_all_team_stats(team, season_end_year, data_format='TOTALS'):
+    """
+    Get all team statistics (team stats, opponent stats, and miscellaneous stats) in one call.
+    
+    Args:
+        team (str): Team abbreviation
+        season_end_year (int): Season end year
+        data_format (str): Data format ('TOTALS', 'PER_GAME', 'RANK', 'YEAR/YEAR')
+    
+    Returns:
+        tuple: (team_stats, opp_stats, team_misc) - three pandas Series
+    """
+    # Get the entire page content with one Selenium call
+    from .request_utils import get_selenium_wrapper
+    
+    # Get the full page HTML
+    page_url = f'https://www.basketball-reference.com/teams/{team}/{season_end_year}.html'
+    page_html = get_selenium_wrapper(page_url, "//body")
+    
+    if not page_html:
         raise ConnectionError('Request to basketball reference failed')
+    
+    # Parse the page with BeautifulSoup
+    soup = BeautifulSoup(page_html, 'html.parser')
+    
+    # Get team and opponent stats table
+    team_opp_table = soup.find('table', {'id': 'team_and_opponent'})
+    if team_opp_table:
+        df = pd.read_html(str(team_opp_table))[0]
+        opp_idx = df[df['Unnamed: 0'] == 'Opponent'].index[0]
+        
+        # Split into team and opponent data
+        team_df = df[:opp_idx]
+        opp_df = df[opp_idx:]
+        
+        # Get team stats
+        if data_format == 'TOTALS':
+            row_idx = 'Team'
+        elif data_format == 'PER_GAME':
+            row_idx = 'Team/G'
+        elif data_format == 'RANK':
+            row_idx = 'Lg Rank'
+        elif data_format == 'YEAR/YEAR':
+            row_idx = 'Year/Year'
+        else:
+            print('Invalid data format')
+            return pd.Series(), pd.Series(), pd.Series()
+        
+        team_stats = team_df[team_df['Unnamed: 0'] == row_idx]
+        team_stats = team_stats.drop(columns=['Unnamed: 0']).reindex()
+        team_stats = pd.Series(index=list(team_stats.columns), data=team_stats.values.tolist()[0])
+        
+        # Get opponent stats
+        if data_format == 'TOTALS':
+            row_idx = 'Opponent'
+        elif data_format == 'PER_GAME':
+            row_idx = 'Opponent/G'
+        elif data_format == 'RANK':
+            row_idx = 'Lg Rank'
+        elif data_format == 'YEAR/YEAR':
+            row_idx = 'Year/Year'
+        
+        opp_stats = opp_df[opp_df['Unnamed: 0'] == row_idx]
+        opp_stats = opp_stats.drop(columns=['Unnamed: 0']).reindex()
+        opp_stats = pd.Series(index=list(opp_stats.columns), data=opp_stats.values.tolist()[0])
+    else:
+        print("No team and opponent stats table found")
+        team_stats = pd.Series()
+        opp_stats = pd.Series()
+    
+    # Get miscellaneous stats from the same page
+    misc_table = soup.find('table', {'id': 'team_misc'})
+    if misc_table:
+        misc_df = pd.read_html(str(misc_table))[0]
+        if data_format == 'TOTALS':
+            row_idx = 'Team'
+        elif data_format == 'RANK':
+            row_idx = 'Lg Rank'
+        else:
+            print('Invalid data format for misc stats')
+            return team_stats, opp_stats, pd.Series()
+        
+        misc_df.columns = misc_df.columns.droplevel()
+        misc_df.rename(columns={'Arena': 'ARENA', 'Attendance': 'ATTENDANCE'}, inplace=True)
+        team_misc = misc_df[misc_df['Unnamed: 0_level_1'] == row_idx]
+        team_misc = team_misc.drop(columns=['Unnamed: 0_level_1']).reindex()
+        team_misc = pd.Series(index=list(team_misc.columns), data=team_misc.values.tolist()[0])
+    else:
+        print("No misc stats table found")
+        team_misc = pd.Series()
+    
+    return team_stats, opp_stats, team_misc

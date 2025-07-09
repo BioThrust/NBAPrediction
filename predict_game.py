@@ -1,312 +1,251 @@
 """
-NBA Game Prediction Interface
+Enhanced NBA Game Prediction Script
 
-This script provides an interactive interface for predicting NBA game outcomes using trained models.
-It supports three model types: Neural Network, Basic Ensemble, and Advanced Ensemble.
-Users can input team abbreviations to get predictions with confidence levels.
+This script uses improved ensemble models with enhanced features, feature selection,
+and model calibration to predict NBA game outcomes with higher accuracy.
 """
 
+import sys
+import os
 import json
 import numpy as np
-import math
 import config
 
+# Add necessary paths to system path for imports
+sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '.')))
+
 # Import custom modules
-from ensemble_models.ensemble_model import EnsembleNBAPredictor
-from ensemble_models.advanced_ensemble import AdvancedEnsembleNBAPredictor
-from utils.shared_utils import PredictionNeuralNetwork, get_team_stats, create_comparison_features
+from utils.shared_utils import get_team_stats, create_comparison_features, select_best_features
+from models.ensemble_model import EnsembleNBAPredictor
+from models.advanced_ensemble import AdvancedEnsembleNBAPredictor
 
-
-def load_model(model_type='nn', dataset_year=None):
+def predict_game_enhanced(away_team, home_team, model_type='advanced', season_year=None):
     """
-    Load the selected prediction model.
+    Enhanced prediction function with improved accuracy.
     
     Args:
-        model_type (str): Type of model to load ('nn', 'ensemble', or 'advanced')
-        dataset_year (str): Year of dataset to use for training ensemble models
+        away_team (str): Away team abbreviation (e.g., "BOS")
+        home_team (str): Home team abbreviation (e.g., "LAL")
+        model_type (str): Type of model to use ('basic', 'advanced')
+        season_year (int): Season year for data
     
     Returns:
-        model: Loaded prediction model or None if loading fails
+        dict: Prediction results with confidence and betting analysis
     """
-    if model_type == 'ensemble':
-        print("Loading basic ensemble model...")
-        model = EnsembleNBAPredictor()
+    if season_year is None:
+        season_year = config.SEASON_YEAR
+    
+    print(f"Making enhanced prediction for {away_team} @ {home_team} ({season_year} season)")
+    print("=" * 60)
+    
+    # Get team statistics
+    try:
+        away_stats = get_team_stats(away_team, season_year)
+        home_stats = get_team_stats(home_team, season_year)
         
-        # Set the dataset year for training
-        if dataset_year:
-            import sys
-            # Temporarily set sys.argv to pass dataset choice to load_data
-            original_argv = sys.argv.copy()
-            sys.argv = ['predict_game.py', 'ensemble', dataset_year]
-            X, y = model.load_data()
-            sys.argv = original_argv  # Restore original argv
-        else:
-            X, y = model.load_data()
+        if away_stats is None or home_stats is None:
+            print(f"Error: Could not load team statistics for {away_team} or {home_team}")
+            return None
             
-        model.initialize_models()
-        
-        from sklearn.model_selection import train_test_split
-        X_train, X_test, y_train, y_test = train_test_split(
-            X, y, test_size=0.2, random_state=42, stratify=y
-        )
-        model.train_models(X_train, y_train, X_test, y_test)
-        model.model_type = 'ensemble'
-        return model
-        
-    elif model_type == 'advanced':
-        print("Loading advanced ensemble model...")
-        model = AdvancedEnsembleNBAPredictor()
-        
-        # Set the dataset year for training
-        if dataset_year:
-            import sys
-            # Temporarily set sys.argv to pass dataset choice to load_data
-            original_argv = sys.argv.copy()
-            sys.argv = ['predict_game.py', 'advanced', dataset_year]
-            X, y = model.load_data()
-            sys.argv = original_argv  # Restore original argv
-        else:
-            X, y = model.load_data()
-            
-        model.initialize_models()
-        
-        from sklearn.model_selection import train_test_split
-        X_train, X_test, y_train, y_test = train_test_split(
-            X, y, test_size=0.2, random_state=42, stratify=y
-        )
-        
-        # Prepare odds data for training
-        odds_train = [model.odds[i] for i in range(len(X)) if i < len(X_train)]
-        odds_test = [model.odds[i] for i in range(len(X)) if i >= len(X_train)]
-        
-        model.train_stacking_ensemble(X_train, y_train, X_test, y_test)
-        model.train_voting_ensemble(X_train, y_train)
-        model.optimize_betting_thresholds(X_train, y_train, odds_train)
-        model.model_type = 'advanced'
-        return model
-        
-    else:
-        # Load neural network model
+    except Exception as e:
+        print(f"Error loading team stats: {e}")
+        return None
+    
+    # Create enhanced features
+    features, feature_names = create_comparison_features(away_stats, home_stats)
+    
+    if features is None:
+        print("Error: Could not create features")
+        return None
+    
+    # Load and use the appropriate model
+    if model_type == 'advanced':
+        print("Using Advanced Ensemble Model...")
         try:
-            with open('json_files/weights.json', 'r') as f:
-                weights_data = json.load(f)
-            model = PredictionNeuralNetwork(weights_data)
-            model.weights_data = weights_data
-            model.model_type = 'nn'
-            print(f"Neural network loaded successfully! (Accuracy: {weights_data['model_performance']['mean_accuracy']:.1f}%)")
-            return model
-        except FileNotFoundError:
-            print("Error: weights.json not found. Please train the model first using data_collection/sports_binary.py")
-            return None
+            # Try to load saved advanced ensemble
+            model = AdvancedEnsembleNBAPredictor()
+            
+            # Check for saved weights
+            weights_file = f'data/{season_year}_ensemble_advanced_weights.json'
+            if os.path.exists(weights_file):
+                model.load_ensemble(weights_file)
+                if model.is_trained:
+                    print("Loaded pre-trained advanced ensemble")
+                else:
+                    print("Training advanced ensemble from scratch...")
+                    X, y = model.load_data()
+                    model.initialize_models()
+                    
+                    from sklearn.model_selection import train_test_split
+                    X_train, X_test, y_train, y_test = train_test_split(
+                        X, y, test_size=0.2, random_state=42, stratify=y
+                    )
+                    
+                    model.train_stacking_ensemble(X_train, y_train, X_test, y_test)
+                    model.train_voting_ensemble(X_train, y_train)
+                    
+                    # Save the trained model
+                    model.save_ensemble(weights_file)
+            else:
+                print("Training advanced ensemble from scratch...")
+                X, y = model.load_data()
+                model.initialize_models()
+                
+                from sklearn.model_selection import train_test_split
+                X_train, X_test, y_train, y_test = train_test_split(
+                    X, y, test_size=0.2, random_state=42, stratify=y
+                )
+                
+                model.train_stacking_ensemble(X_train, y_train, X_test, y_test)
+                model.train_voting_ensemble(X_train, y_train)
+                
+                # Save the trained model
+                model.save_ensemble(weights_file)
+            
+            # Make prediction
+            prediction_result = model.predict_game_advanced(away_team, home_team)
+            
         except Exception as e:
-            print(f"Error loading model: {e}")
+            print(f"Error with advanced ensemble: {e}")
+            print("Falling back to basic ensemble...")
+            model_type = 'basic'
+    
+    if model_type == 'basic':
+        print("Using Basic Ensemble Model...")
+        try:
+            model = EnsembleNBAPredictor()
+            
+            # Check for saved weights
+            weights_file = f'data/{season_year}_ensemble_basic_weights.json'
+            if os.path.exists(weights_file):
+                model.load_ensemble(weights_file)
+                if model.is_trained:
+                    print("Loaded pre-trained basic ensemble")
+                else:
+                    print("Training basic ensemble from scratch...")
+                    X, y = model.load_data()
+                    model.initialize_models()
+                    
+                    from sklearn.model_selection import train_test_split
+                    X_train, X_test, y_train, y_test = train_test_split(
+                        X, y, test_size=0.2, random_state=42, stratify=y
+                    )
+                    
+                    model.train_models(X_train, y_train, X_test, y_test)
+                    model.save_ensemble(weights_file)
+            else:
+                print("Training basic ensemble from scratch...")
+                X, y = model.load_data()
+                model.initialize_models()
+                
+                from sklearn.model_selection import train_test_split
+                X_train, X_test, y_train, y_test = train_test_split(
+                    X, y, test_size=0.2, random_state=42, stratify=y
+                )
+                
+                model.train_models(X_train, y_train, X_test, y_test)
+                model.save_ensemble(weights_file)
+            
+            # Make prediction
+            prediction_result = model.predict_game(away_team, home_team)
+            
+        except Exception as e:
+            print(f"Error with basic ensemble: {e}")
             return None
-
+    
+    # Display enhanced results
+    if prediction_result:
+        print("\n" + "=" * 60)
+        print("ENHANCED PREDICTION RESULTS")
+        print("=" * 60)
+        
+        # Display team comparison
+        print(f"\nTeam Comparison ({season_year} Season):")
+        print(f"{away_team} (Away) vs {home_team} (Home)")
+        print("-" * 40)
+        
+        # Key metrics comparison
+        metrics = ['net_rating', 'offensive_rating', 'defensive_rating', 'efg_pct', 'pace']
+        for metric in metrics:
+            away_val = away_stats.get(metric, 0)
+            home_val = home_stats.get(metric, 0)
+            diff = away_val - home_val
+            print(f"{metric.replace('_', ' ').title()}: {away_val:.1f} vs {home_val:.1f} (diff: {diff:+.1f})")
+        
+        # --- Always print prediction result ---
+        print("\nPrediction Result:")
+        winner = None
+        prob = None
+        confidence = None
+        # Advanced ensemble format
+        if 'ensemble_probability' in prediction_result:
+            prob = prediction_result['ensemble_probability']
+            pred = prediction_result.get('ensemble_prediction', int(prob > 0.5))
+            confidence = prediction_result.get('confidence', abs(prob - 0.5) * 2)
+            winner = away_team if pred else home_team
+        # Basic ensemble format
+        elif 'away_win_probability' in prediction_result:
+            prob = prediction_result['away_win_probability']
+            pred = prediction_result.get('prediction', int(prob > 0.5))
+            confidence = abs(prob - 0.5) * 2
+            winner = away_team if pred else home_team
+        # Fallback
+        else:
+            prob = prediction_result.get('probability', None)
+            if prob is not None:
+                pred = int(prob > 0.5)
+                confidence = abs(prob - 0.5) * 2
+                winner = away_team if pred else home_team
+        if prob is not None:
+            print(f"Predicted Winner: {winner}")
+            print(f"Probability (away win): {prob:.1%}")
+            print(f"Confidence: {confidence:.1%}")
+        else:
+            print("Prediction failed or result format unknown.")
+        
+        # Additional analysis
+        if 'model_details' in prediction_result:
+            print(f"\nModel Details:")
+            for key, value in prediction_result['model_details'].items():
+                print(f"  {key}: {value}")
+        
+        return prediction_result
+    
+    return None
 
 def main():
-    """
-    Main prediction interface for NBA game predictions.
-    Provides an interactive command-line interface for users to input teams and get predictions.
-    """
-    print("=== NBA Game Predictor ===")
-    print("This program predicts the winner of NBA games using trained models.")
-    print("Enter team abbreviations (e.g., BOS, LAL, DEN, GSW, PHO, MIA, NYK, MIL, PHI, CLE)")
-    print()
-    
-    # Choose year for team stats cache
-    print("Choose which year's team stats to use:")
-    print("1. 2024 season (2023-2024 NBA season)")
-    print("2. 2025 season (2024-2025 NBA season)")
-    print("3. Use default from config")
-    print("4. Enter custom year manually")
-    print()
-    
-    year_choice = input("Enter 1, 2, 3, 4, or press Enter for default: ").strip()
-    
-    # Determine which year to use
-    if year_choice == '1':
-        cache_year = 2024
-        print(f"Using {cache_year} season team stats...")
-    elif year_choice == '2':
-        cache_year = 2025
-        print(f"Using {cache_year} season team stats...")
-    elif year_choice == '4':
-        while True:
-            try:
-                custom_year = input("Enter year (e.g., 2023, 2024, 2025): ").strip()
-                cache_year = int(custom_year)
-                if 2000 <= cache_year <= 2030:  # Reasonable year range
-                    print(f"Using {cache_year} season team stats...")
-                    break
-                else:
-                    print("Please enter a year between 2000 and 2030.")
-            except ValueError:
-                print("Please enter a valid year number.")
-    else:
-        cache_year = config.SEASON_YEAR
-        print(f"Using default season ({cache_year}) team stats...")
-    
-    # Choose dataset for ensemble training
-    print("\nChoose which dataset to train ensemble models on:")
-    print("1. 2024 season (2023-2024 NBA season)")
-    print("2. 2025 season (2024-2025 NBA season)")
-    print("3. Combined dataset (multiple seasons)")
-    print("4. Use default from config")
-    print("5. Enter custom year manually")
-    print()
-    
-    dataset_choice = input("Enter 1, 2, 3, 4, 5, or press Enter for default: ").strip()
-    
-    # Determine which dataset to use
-    if dataset_choice == '1':
-        dataset_year = '2024'
-        print(f"Using {dataset_year} season dataset for training...")
-    elif dataset_choice == '2':
-        dataset_year = '2025'
-        print(f"Using {dataset_year} season dataset for training...")
-    elif dataset_choice == '3':
-        dataset_year = 'combined'
-        print(f"Using combined dataset for training...")
-    elif dataset_choice == '5':
-        while True:
-            try:
-                custom_year = input("Enter year for dataset (e.g., 2023, 2024, 2025): ").strip()
-                dataset_year = custom_year
-                if 2000 <= int(custom_year) <= 2030:  # Reasonable year range
-                    print(f"Using {dataset_year} season dataset for training...")
-                    break
-                else:
-                    print("Please enter a year between 2000 and 2030.")
-            except ValueError:
-                print("Please enter a valid year number.")
-    else:
-        dataset_year = None  # Use default from config
-        print(f"Using default dataset for training...")
-    
-    # Model selection with ensemble as default
-    print("\nChoose prediction model:")
-    print("1. Neural Network (original) - Basic single model")
-    print("2. Basic Ensemble (RECOMMENDED) - Best pure accuracy")
-    print("3. Advanced Ensemble - Betting analysis and confidence intervals")
-    print()
-    print("RECOMMENDED: Choose option 2 for best accuracy or option 3 for betting insights.")
-    print()
-    
-    model_choice = input("Enter 1, 2, or 3 (press Enter for Basic Ensemble): ").strip()
-    
-    # Default to basic ensemble if no input or invalid input
-    if not model_choice or model_choice not in ['1', '2', '3']:
-        print("Using Basic Ensemble (recommended)...")
-        model_choice = '2'
-    
-    # Load the selected model with dataset choice
-    if model_choice == '2':
-        model = load_model('ensemble', dataset_year)
-    elif model_choice == '3':
-        model = load_model('advanced', dataset_year)
-    else:
-        model = load_model('nn')
-    
-    if model is None:
+    """Main function to run enhanced predictions"""
+    if len(sys.argv) < 3:
+        print("Usage: python predict_game.py <away_team> <home_team> [model_type] [season_year]")
+        print("Example: python predict_game.py BOS LAL advanced 2025")
+        print("\nModel types: basic, advanced")
+        print("Season years: 2024, 2025, etc.")
         return
     
-    # Check if team stats cache exists for the chosen year
-    team_stats_cache_file = config.get_team_stats_cache_file(cache_year)
-    try:
-        with open(team_stats_cache_file, 'r') as f:
-            team_stats_cache = json.load(f)
-        available_teams = list(team_stats_cache.keys())
-        print(f"Team stats cache loaded successfully for {cache_year} season! ({len(available_teams)} teams available)")
-        print(f"Available teams: {', '.join(available_teams)}")
-    except FileNotFoundError:
-        print(f"Warning: {team_stats_cache_file} not found. Please run data_collection/playoff_data.py first to generate team stats for {cache_year} season.")
-        print("Using placeholder stats for all teams.")
-    except Exception as e:
-        print(f"Error loading team stats cache: {e}")
-        print("Using placeholder stats for all teams.")
+    away_team = sys.argv[1].upper()
+    home_team = sys.argv[2].upper()
+    model_type = sys.argv[3] if len(sys.argv) > 3 else 'advanced'
+    season_year = int(sys.argv[4]) if len(sys.argv) > 4 else None
     
-    print()
+    # Validate inputs
+    valid_teams = list(config.TEAM_ABBR_TO_FULL.keys())
+    if away_team not in valid_teams or home_team not in valid_teams:
+        print("Error: Invalid team abbreviation")
+        print(f"Valid teams: {', '.join(valid_teams)}")
+        return
     
-    # Main prediction loop
-    while True:
-        try:
-            # Get user input for teams
-            away_team = input("Enter away team abbreviation: ").upper().strip()
-            home_team = input("Enter home team abbreviation: ").upper().strip()
-            
-            # Validate input
-            if away_team == home_team:
-                print("Error: Away team and home team cannot be the same!")
-                continue
-            
-            # Get team stats for prediction
-            away_stats = get_team_stats(away_team)
-            home_stats = get_team_stats(home_team)
-            
-            # Create features for model input
-            features, feature_names = create_comparison_features(away_stats, home_stats)
-            
-            # Make prediction based on model type
-            if hasattr(model, 'model_type') and model.model_type == 'ensemble':
-                pred = model.predict(features.reshape(1, -1))[0]
-                probability = model.predict_proba(features.reshape(1, -1))[0]
-            elif hasattr(model, 'model_type') and model.model_type == 'advanced':
-                result = model.predict_with_confidence(features.reshape(1, -1))
-                pred = result['ensemble_prediction'][0]
-                probability = result['ensemble_probability'][0]
-                confidence = result['confidence'][0]
-                model_agreement = result['model_agreement'][0]
-            else:
-                probability = model.predict_probability(features.reshape(1, -1))[0][0]
-                pred = int(probability > 0.5)
-            
-            # Display prediction results
-            print(f"\n=== Prediction Results ===")
-            print(f"{away_team} @ {home_team}")
-            print(f"Home win probability: {(1-probability):.1%}")
-            print(f"Away win probability: {probability:.1%}")
-            
-            # Show predicted winner
-            if pred == 0:
-                print(f"Predicted winner: {home_team} (Home)")
-            else:
-                print(f"Predicted winner: {away_team} (Away)")
-            
-            # Determine confidence level based on probability
-            if probability > 0.7 or probability < 0.3:
-                confidence_level = "High"
-            elif probability > 0.6 or probability < 0.4:
-                confidence_level = "Medium"
-            else:
-                confidence_level = "Low"
-            
-            print(f"Confidence: {confidence_level}")
-            
-            # Show additional info for advanced ensemble
-            if hasattr(model, 'model_type') and model.model_type == 'advanced':
-                print(f"Model Agreement: {model_agreement:.3f}")
-                print(f"Prediction Confidence: {1-confidence:.3f}")
-            
-            # Show model performance information
-            if hasattr(model, 'weights_data') and model.weights_data:
-                print(f"Model performance: {model.weights_data['model_performance']['mean_accuracy']:.1f}% accuracy")
-            else:
-                print("Model performance: Ensemble model (no single accuracy metric)")
-            
-        except KeyboardInterrupt:
-            print("\n\nExiting...")
-            break
-        except Exception as e:
-            print(f"Error: {e}")
-            print("Please try again with valid team abbreviations.")
-        
-        # Ask if user wants to predict another game
-        print("\n" + "="*50)
-        continue_prediction = input("Predict another game? (y/n): ").lower().strip()
-        if continue_prediction != 'y':
-            print("Thanks for using NBA Game Predictor!")
-            break
-
+    if model_type not in ['basic', 'advanced']:
+        print("Error: Model type must be 'basic' or 'advanced'")
+        return
+    
+    # Make prediction
+    result = predict_game_enhanced(away_team, home_team, model_type, season_year)
+    
+    if result:
+        print(f"\n✅ Enhanced prediction completed successfully!")
+    else:
+        print(f"\n❌ Prediction failed. Please check your inputs and try again.")
 
 if __name__ == "__main__":
     main() 

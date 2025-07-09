@@ -65,9 +65,14 @@ logs/
 !requirements*.json
 
 # Model weights and large data files
-json_files/*.json
+data/*.json
 weights.json
 ensemble_weights.json
+ensemble_basic_weights.json
+ensemble_advanced_weights.json
+data/*_ensemble_*_weights_models.joblib
+data/*_ensemble_advanced_weights_models.joblib
+data/*_ensemble_basic_weights_models.joblib
 
 # Selenium/Chrome
 chromedriver

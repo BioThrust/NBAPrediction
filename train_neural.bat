@@ -19,7 +19,7 @@ if "%DATA_SOURCE%"=="1" (
     echo 2. Normalize features for training
     echo 3. Perform 5-fold cross-validation
     echo 4. Train the neural network with early stopping
-    echo 5. Save the trained weights to json_files/weights.json
+    echo 5. Save the trained weights to data/weights.json
     echo.
     
     cd data_collection
@@ -33,13 +33,13 @@ if "%DATA_SOURCE%"=="1" (
         echo ========================================
         echo.
         echo Files created:
-        echo - json_files/weights.json (trained neural network weights)
+        echo - data/weights.json (trained neural network weights)
         echo.
         echo Model performance metrics have been displayed above.
         echo You can now run predict_game.py to make predictions.
         echo.
         echo Optional: You can also run ensemble training:
-        echo cd ensemble_models
+        echo cd models
         echo python run_ensemble.py
     ) else (
         echo.
@@ -63,7 +63,7 @@ if "%DATA_SOURCE%"=="1" (
     echo 2. Normalize features for training
     echo 3. Perform 5-fold cross-validation
     echo 4. Train the neural network with early stopping
-    echo 5. Save the trained weights to json_files/weights.json
+    echo 5. Save the trained weights to data/weights.json
     echo.
     echo Note: Combined dataset training may take longer but should provide better results.
     echo.
@@ -79,15 +79,15 @@ if "%DATA_SOURCE%"=="1" (
         echo ========================================
         echo.
         echo Files created:
-        echo - json_files/weights.json (trained neural network weights)
+        echo - data/weights.json (trained neural network weights)
         echo.
         echo Model performance metrics have been displayed above.
         echo The model was trained on multiple seasons for better performance.
         echo You can now run predict_game.py to make predictions.
         echo.
         echo Optional: You can also run ensemble training:
-        echo cd ensemble_models
-        echo python run_ensemble.py combined
+        echo cd models
+        echo python run_ensemble.py
     ) else (
         echo.
         echo ========================================

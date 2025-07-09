@@ -25,9 +25,9 @@ def load_season_data(season_year):
         dict: Season data loaded from JSON file
     """
     if season_year == 'combined':
-        season_data_file = 'json_files/combined-seasons.json'
+        season_data_file = 'data/combined-seasons.json'
     else:
-        season_data_file = f'json_files/{season_year}-season.json'
+        season_data_file = f'data/{season_year}-season.json'
     
     try:
         with open(season_data_file, 'r') as f:
@@ -488,10 +488,10 @@ def cross_validate_neural_network(train_data, n_folds=5, n_epochs=100):
             }
         }
         
-        with open('json_files/weights.json', 'w') as f:
+        with open('data/weights.json', 'w') as f:
             json.dump(weights_data, f, indent=2)
         
-        print("Best model weights saved to json_files/weights.json")
+        print("Best model weights saved to data/weights.json")
     
     return {
         'mean_accuracy': mean_accuracy,

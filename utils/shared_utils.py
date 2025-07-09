@@ -8,6 +8,44 @@ It includes feature creation, team statistics retrieval, and neural network pred
 import json
 import numpy as np
 import math
+from sklearn.feature_selection import SelectKBest, f_classif, mutual_info_classif
+from sklearn.ensemble import RandomForestClassifier
+
+def select_best_features(X, y, k=None, method='mutual_info'):
+    """
+    Select the best features using statistical tests.
+    
+    Args:
+        X (np.array): Feature matrix
+        y (np.array): Target labels
+        k (int): Number of features to select (if None, select top 80%)
+        method (str): Feature selection method ('mutual_info', 'f_classif', 'random_forest')
+    
+    Returns:
+        tuple: (X_selected, selected_indices, feature_scores)
+    """
+    if k is None:
+        k = max(1, int(X.shape[1] * 0.8))  # Select top 80% of features
+    
+    if method == 'mutual_info':
+        selector = SelectKBest(score_func=mutual_info_classif, k=k)
+    elif method == 'f_classif':
+        selector = SelectKBest(score_func=f_classif, k=k)
+    elif method == 'random_forest':
+        # Use Random Forest feature importance
+        rf = RandomForestClassifier(n_estimators=100, random_state=42)
+        rf.fit(X, y)
+        feature_importance = rf.feature_importances_
+        selected_indices = np.argsort(feature_importance)[-k:]
+        return X[:, selected_indices], selected_indices, feature_importance
+    else:
+        raise ValueError("Method must be 'mutual_info', 'f_classif', or 'random_forest'")
+    
+    X_selected = selector.fit_transform(X, y)
+    selected_indices = selector.get_support(indices=True)
+    feature_scores = selector.scores_
+    
+    return X_selected, selected_indices, feature_scores
 
 def create_comparison_features(away_team_stats, home_team_stats):
     """
@@ -159,16 +197,283 @@ def create_comparison_features(away_team_stats, home_team_stats):
         comparison_features.append(defensive_battle)
         feature_names.append("defensive_battle")
         
+        # NEW ENHANCED FEATURES FOR BETTER ACCURACY
+        
+        # 19. Advanced Efficiency Metrics
+        # True Shooting Percentage equivalent (using eFG% as proxy)
+        away_ts_pct = away_efg * 1.1  # Approximate TS% from eFG%
+        home_ts_pct = home_efg * 1.1
+        ts_advantage = away_ts_pct - home_ts_pct
+        comparison_features.append(ts_advantage)
+        feature_names.append("true_shooting_advantage")
+        
+        # 20. Possession Efficiency (Pace-adjusted scoring)
+        away_poss_efficiency = away_off_rating / (away_pace + 1e-8)
+        home_poss_efficiency = home_off_rating / (home_pace + 1e-8)
+        poss_efficiency_advantage = away_poss_efficiency - home_poss_efficiency
+        comparison_features.append(poss_efficiency_advantage)
+        feature_names.append("possession_efficiency_advantage")
+        
+        # 21. Defensive Intensity (lower opponent shooting + higher opponent turnovers)
+        away_def_intensity = (home_opp_efg * -1) + (away_opp_tov * 0.1)
+        home_def_intensity = (away_opp_efg * -1) + (home_opp_tov * 0.1)
+        def_intensity_advantage = away_def_intensity - home_def_intensity
+        comparison_features.append(def_intensity_advantage)
+        feature_names.append("defensive_intensity_advantage")
+        
+        # 22. Ball Movement Quality (assists per possession)
+        away_ast_per_poss = away_ast / (away_pace + 1e-8)
+        home_ast_per_poss = home_ast / (home_pace + 1e-8)
+        ast_per_poss_advantage = away_ast_per_poss - home_ast_per_poss
+        comparison_features.append(ast_per_poss_advantage)
+        feature_names.append("assists_per_possession_advantage")
+        
+        # 23. Rebounding Efficiency (rebounds per possession)
+        away_reb_per_poss = away_trb / (away_pace + 1e-8)
+        home_reb_per_poss = home_trb / (home_pace + 1e-8)
+        reb_per_poss_advantage = away_reb_per_poss - home_reb_per_poss
+        comparison_features.append(reb_per_poss_advantage)
+        feature_names.append("rebounds_per_possession_advantage")
+        
+        # 24. Turnover Rate (turnovers per possession)
+        away_tov_rate = away_tov / (away_pace + 1e-8)
+        home_tov_rate = home_tov / (home_pace + 1e-8)
+        tov_rate_advantage = home_tov_rate - away_tov_rate  # Lower is better
+        comparison_features.append(tov_rate_advantage)
+        feature_names.append("turnover_rate_advantage")
+        
+        # 25. Opponent Turnover Rate Forcing
+        away_opp_tov_rate = away_opp_tov / (away_pace + 1e-8)
+        home_opp_tov_rate = home_opp_tov / (home_pace + 1e-8)
+        opp_tov_rate_advantage = away_opp_tov_rate - home_opp_tov_rate
+        comparison_features.append(opp_tov_rate_advantage)
+        feature_names.append("opp_turnover_rate_advantage")
+        
+        # 26. Net Rating Squared (captures extreme advantages)
+        net_rating_squared = net_rating_advantage ** 2
+        comparison_features.append(net_rating_squared)
+        feature_names.append("net_rating_squared")
+        
+        # 27. Offensive Rating Interaction (offense vs defense matchup strength)
+        off_def_interaction = offensive_advantage * defensive_advantage
+        comparison_features.append(off_def_interaction)
+        feature_names.append("offensive_defensive_interaction")
+        
+        # 28. Pace-Shooting Interaction (how pace affects shooting efficiency)
+        pace_shooting_interaction = pace_advantage * shooting_advantage
+        comparison_features.append(pace_shooting_interaction)
+        feature_names.append("pace_shooting_interaction")
+        
+        # 29. Home Court Adjusted Net Rating
+        home_court_adjusted_net = net_rating_advantage - 3.0  # Subtract typical home court advantage
+        comparison_features.append(home_court_adjusted_net)
+        feature_names.append("home_court_adjusted_net_rating")
+        
+        # 30. Dominance Indicator (when one team is clearly superior)
+        dominance = 1.0 if abs(net_rating_advantage) > 5.0 else 0.0
+        comparison_features.append(dominance)
+        feature_names.append("dominance_indicator")
+        
+        # 31. Balanced Team Indicator (both teams have similar offensive/defensive ratings)
+        away_balance = abs(away_off_rating - away_def_rating)
+        home_balance = abs(home_off_rating - home_def_rating)
+        balance_advantage = home_balance - away_balance  # Lower balance is better
+        comparison_features.append(balance_advantage)
+        feature_names.append("team_balance_advantage")
+        
+        # 32. Efficiency Gap (difference in efficiency between teams)
+        away_efficiency = away_off_rating - away_def_rating
+        home_efficiency = home_off_rating - home_def_rating
+        efficiency_gap = away_efficiency - home_efficiency
+        comparison_features.append(efficiency_gap)
+        feature_names.append("efficiency_gap")
+        
+        # 33. Shooting vs Defense Mismatch
+        shooting_defense_mismatch = shooting_advantage - opp_shooting_advantage
+        comparison_features.append(shooting_defense_mismatch)
+        feature_names.append("shooting_defense_mismatch")
+        
+        # 34. Turnover vs Defense Mismatch
+        turnover_defense_mismatch = tov_advantage - opp_tov_advantage
+        comparison_features.append(turnover_defense_mismatch)
+        feature_names.append("turnover_defense_mismatch")
+        
+        # 35. Rebounding vs Defense Mismatch
+        rebounding_defense_mismatch = rebounding_advantage - opp_reb_advantage
+        comparison_features.append(rebounding_defense_mismatch)
+        feature_names.append("rebounding_defense_mismatch")
+        
+        # 36. Assists vs Defense Mismatch
+        assists_defense_mismatch = assists_advantage - opp_ast_advantage
+        comparison_features.append(assists_defense_mismatch)
+        feature_names.append("assists_defense_mismatch")
+        
+        # NEW ADVANCED FEATURES FOR SIGNIFICANT ACCURACY IMPROVEMENT
+        
+        # 37. Recent Form Indicator (using net rating as proxy for recent performance)
+        away_recent_form = max(0, away_net_rating)  # Only positive form
+        home_recent_form = max(0, home_net_rating)
+        recent_form_advantage = away_recent_form - home_recent_form
+        comparison_features.append(recent_form_advantage)
+        feature_names.append("recent_form_advantage")
+        
+        # 38. Momentum Indicator (teams on winning streaks vs losing streaks)
+        away_momentum = 1.0 if away_net_rating > 2.0 else (0.5 if away_net_rating > 0 else 0.0)
+        home_momentum = 1.0 if home_net_rating > 2.0 else (0.5 if home_net_rating > 0 else 0.0)
+        momentum_advantage = away_momentum - home_momentum
+        comparison_features.append(momentum_advantage)
+        feature_names.append("momentum_advantage")
+        
+        # 39. Elite Team Indicator (teams with very high net ratings)
+        away_elite = 1.0 if away_net_rating > 5.0 else 0.0
+        home_elite = 1.0 if home_net_rating > 5.0 else 0.0
+        elite_advantage = away_elite - home_elite
+        comparison_features.append(elite_advantage)
+        feature_names.append("elite_team_advantage")
+        
+        # 40. Tanking Team Indicator (teams with very low net ratings)
+        away_tanking = 1.0 if away_net_rating < -5.0 else 0.0
+        home_tanking = 1.0 if home_net_rating < -5.0 else 0.0
+        tanking_advantage = home_tanking - away_tanking  # Tanking is bad
+        comparison_features.append(tanking_advantage)
+        feature_names.append("tanking_team_advantage")
+        
+        # 41. Offensive Firepower (high scoring teams)
+        away_firepower = 1.0 if away_off_rating > 115 else 0.0
+        home_firepower = 1.0 if home_off_rating > 115 else 0.0
+        firepower_advantage = away_firepower - home_firepower
+        comparison_features.append(firepower_advantage)
+        feature_names.append("offensive_firepower_advantage")
+        
+        # 42. Defensive Wall (excellent defensive teams)
+        away_defense = 1.0 if away_def_rating < 110 else 0.0  # Lower is better
+        home_defense = 1.0 if home_def_rating < 110 else 0.0
+        defense_advantage = away_defense - home_defense
+        comparison_features.append(defense_advantage)
+        feature_names.append("defensive_wall_advantage")
+        
+        # 43. Efficiency Gap Squared (captures extreme efficiency differences)
+        efficiency_gap_squared = efficiency_gap ** 2
+        comparison_features.append(efficiency_gap_squared)
+        feature_names.append("efficiency_gap_squared")
+        
+        # 44. Net Rating Cubed (captures very extreme advantages)
+        net_rating_cubed = net_rating_advantage ** 3
+        comparison_features.append(net_rating_cubed)
+        feature_names.append("net_rating_cubed")
+        
+        # 45. Shooting vs Defense Interaction
+        shooting_defense_interaction = shooting_advantage * defensive_advantage
+        comparison_features.append(shooting_defense_interaction)
+        feature_names.append("shooting_defense_interaction")
+        
+        # 46. Pace vs Efficiency Interaction
+        pace_efficiency_interaction = pace_advantage * efficiency_gap
+        comparison_features.append(pace_efficiency_interaction)
+        feature_names.append("pace_efficiency_interaction")
+        
+        # 47. Home Court Adjusted Efficiency
+        home_court_adjusted_efficiency = efficiency_gap - 3.0  # Subtract home court advantage
+        comparison_features.append(home_court_adjusted_efficiency)
+        feature_names.append("home_court_adjusted_efficiency")
+        
+        # 48. Balanced vs Unbalanced Matchup
+        away_balance = abs(away_off_rating - away_def_rating)
+        home_balance = abs(home_off_rating - home_def_rating)
+        balance_difference = away_balance - home_balance
+        comparison_features.append(balance_difference)
+        feature_names.append("team_balance_difference")
+        
+        # 49. Extreme Mismatch Indicator (when one team is much better in all areas)
+        extreme_mismatch = 1.0 if (abs(net_rating_advantage) > 8.0 and abs(shooting_advantage) > 0.05) else 0.0
+        comparison_features.append(extreme_mismatch)
+        feature_names.append("extreme_mismatch_indicator")
+        
+        # 50. Close Game High Scoring (both teams good offensively, close net ratings)
+        close_high_scoring = 1.0 if (abs(net_rating_advantage) < 3.0 and away_off_rating > 115 and home_off_rating > 115) else 0.0
+        comparison_features.append(close_high_scoring)
+        feature_names.append("close_high_scoring_game")
+        
+        # 51. Defensive Battle Close Game (both teams good defensively, close net ratings)
+        defensive_battle_close = 1.0 if (abs(net_rating_advantage) < 3.0 and away_def_rating < 112 and home_def_rating < 112) else 0.0
+        comparison_features.append(defensive_battle_close)
+        feature_names.append("defensive_battle_close_game")
+        
+        # 52. Offensive vs Defensive Style Clash
+        offensive_defensive_clash = 1.0 if ((away_off_rating > 115 and home_def_rating < 110) or (home_off_rating > 115 and away_def_rating < 110)) else 0.0
+        comparison_features.append(offensive_defensive_clash)
+        feature_names.append("offensive_defensive_style_clash")
+        
+        # 53. Similar Style Teams (both offensive or both defensive)
+        similar_style = 1.0 if ((away_off_rating > 115 and home_off_rating > 115) or (away_def_rating < 110 and home_def_rating < 110)) else 0.0
+        comparison_features.append(similar_style)
+        feature_names.append("similar_style_teams")
+        
+        # 54. Net Rating Percentile (relative strength)
+        net_rating_percentile = net_rating_advantage / 20.0  # Normalize to -1 to 1 range
+        comparison_features.append(net_rating_percentile)
+        feature_names.append("net_rating_percentile")
+        
+        # 55. Shooting Efficiency Percentile
+        shooting_percentile = shooting_advantage / 0.1  # Normalize to reasonable range
+        comparison_features.append(shooting_percentile)
+        feature_names.append("shooting_efficiency_percentile")
+        
+        # 56. Defensive Intensity Percentile
+        defensive_percentile = defensive_advantage / 10.0  # Normalize
+        comparison_features.append(defensive_percentile)
+        feature_names.append("defensive_intensity_percentile")
+        
+        # 57. Overall Team Quality Score
+        away_quality = (away_off_rating + (120 - away_def_rating)) / 2  # Higher is better
+        home_quality = (home_off_rating + (120 - home_def_rating)) / 2
+        quality_advantage = away_quality - home_quality
+        comparison_features.append(quality_advantage)
+        feature_names.append("overall_team_quality_advantage")
+        
+        # 58. Matchup Difficulty (how hard the game will be for away team)
+        matchup_difficulty = home_quality - away_quality  # Higher = harder for away
+        comparison_features.append(matchup_difficulty)
+        feature_names.append("matchup_difficulty_for_away")
+        
+        # 59. Game Type Classification (blowout, close, upset potential)
+        if abs(net_rating_advantage) > 8.0:
+            game_type = 1.0  # Blowout potential
+        elif abs(net_rating_advantage) < 3.0:
+            game_type = 0.0  # Close game
+        else:
+            game_type = 0.5  # Competitive
+        comparison_features.append(game_type)
+        feature_names.append("game_type_classification")
+        
+        # 60. Upset Potential (when underdog has some advantages)
+        upset_potential = 1.0 if (net_rating_advantage < -3.0 and shooting_advantage > 0.02) else 0.0
+        comparison_features.append(upset_potential)
+        feature_names.append("upset_potential_indicator")
+        
     except Exception as e:
         print(f"Error creating enhanced features: {e}")
         # Add zeros for missing features
-        comparison_features.extend([0.0] * 18)
+        comparison_features.extend([0.0] * 60)
         feature_names.extend([
             "net_rating_advantage", "away_momentum", "offensive_advantage", "defensive_advantage",
             "shooting_advantage", "pace_advantage", "turnover_advantage", "rebounding_advantage",
             "assists_advantage", "opp_turnover_advantage", "opp_rebounding_advantage", 
             "opp_assists_advantage", "opp_shooting_advantage", "overall_efficiency",
-            "away_team_strength", "close_game_indicator", "high_scoring_game", "defensive_battle"
+            "away_team_strength", "close_game_indicator", "high_scoring_game", "defensive_battle",
+            "true_shooting_advantage", "possession_efficiency_advantage", "defensive_intensity_advantage",
+            "assists_per_possession_advantage", "rebounds_per_possession_advantage", "turnover_rate_advantage",
+            "opp_turnover_rate_advantage", "net_rating_squared", "offensive_defensive_interaction",
+            "pace_shooting_interaction", "home_court_adjusted_net_rating", "dominance_indicator",
+            "team_balance_advantage", "efficiency_gap", "shooting_defense_mismatch", "turnover_defense_mismatch",
+            "rebounding_defense_mismatch", "assists_defense_mismatch", "recent_form_advantage",
+            "momentum_advantage", "elite_team_advantage", "tanking_team_advantage", "offensive_firepower_advantage",
+            "defensive_wall_advantage", "efficiency_gap_squared", "net_rating_cubed", "shooting_defense_interaction",
+            "pace_efficiency_interaction", "home_court_adjusted_efficiency", "team_balance_difference",
+            "extreme_mismatch_indicator", "close_high_scoring_game", "defensive_battle_close_game",
+            "offensive_defensive_style_clash", "similar_style_teams", "net_rating_percentile",
+            "shooting_efficiency_percentile", "defensive_intensity_percentile", "overall_team_quality_advantage",
+            "matchup_difficulty_for_away", "game_type_classification", "upset_potential_indicator"
         ])
     
     return np.array(comparison_features), feature_names
@@ -215,7 +520,7 @@ def get_team_stats(team_abbr, season_year=None):
                 'opp_efg_pct': 0.55
             }
     except FileNotFoundError:
-        print(f"Warning: {team_stats_cache_file} not found for {season_year} season. Please run data_collection/playoff_data.py first to generate team stats.")
+        print(f"Warning: {team_stats_cache_file} not found for {season_year} season. Please run data_collection/data_scraper_main.py first to generate team stats.")
         print("Using placeholder stats for all teams.")
         # Return average stats as fallback
         return {

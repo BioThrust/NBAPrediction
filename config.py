@@ -22,21 +22,21 @@ SEASON_DISPLAY = f"{SEASON_YEAR-1}-{SEASON_YEAR}"
 # =============================================================================
 
 # Main dataset file
-SEASON_DATA_FILE = f"json_files/{SEASON_YEAR}-season.json"
+SEASON_DATA_FILE = f"data/{SEASON_YEAR}-season.json"
 
 # Model weights file
-WEIGHTS_FILE = "json_files/weights.json"
+WEIGHTS_FILE = "data/weights.json"
 
 # Team stats cache file (season-specific)
 def get_team_stats_cache_file(season_year):
     """Get the team stats cache file path for a specific season."""
-    return f"json_files/{season_year}_team_stats_cache.json"
+    return f"data/{season_year}_team_stats_cache.json"
 
 # Default team stats cache file (for backward compatibility)
 TEAM_STATS_CACHE_FILE = get_team_stats_cache_file(SEASON_YEAR)
 
 # Ensemble model weights file
-ENSEMBLE_WEIGHTS_FILE = "json_files/ensemble_weights.json"
+ENSEMBLE_WEIGHTS_FILE = "data/ensemble_weights.json"
 
 # =============================================================================
 # ODDS PORTAL CONFIGURATION
@@ -86,6 +86,7 @@ STAR_PLAYERS = [
     "LeBron James",
     "Nikola Jokic",
     "Anthony Edwards",
+    "Stephen Curry",
 ]
 
 # =============================================================================

@@ -1,32 +1,64 @@
 @echo off
+setlocal enabledelayedexpansion
+
+REM ========================================
+REM NBA Prediction - Enhanced Game Predictor
+REM ========================================
 echo ========================================
-echo NBA Prediction - Game Predictor
+echo NBA Prediction - Enhanced Game Predictor
 echo ========================================
 echo.
 
-echo Starting NBA game prediction interface...
+echo Usage: run_prediction.bat [AWAY_TEAM] [HOME_TEAM] [MODEL_TYPE] [SEASON_YEAR]
+echo Example: run_prediction.bat BOS LAL advanced 2025
 echo.
-echo Available Models:
-echo 1. Neural Network (Original) - Basic single model
-echo 2. Basic Ensemble (RECOMMENDED) - Combines multiple algorithms
-echo 3. Advanced Ensemble - Includes betting analysis and confidence intervals
-echo.
-
-echo RECOMMENDED: Choose option 2 (Basic Ensemble) for best accuracy
-echo or option 3 (Advanced Ensemble) for betting insights.
+echo Model types: basic, advanced (default: advanced)
+echo Season years: 2024, 2025, etc. (default: 2025)
 echo.
 
-echo Note: Make sure you have trained models available:
-echo - Neural Network: json_files/weights.json
-echo - Ensemble models: Will be trained on-demand (may take a few minutes)
+REM Set model type and season year once at the beginning
+if "%3"=="" (
+    set /p model_type="Enter model type (basic/advanced, default advanced): "
+    if "!model_type!"=="" set model_type=advanced
+) else (
+    set model_type=%3
+)
+if "%4"=="" (
+    set /p season_year="Enter season year (e.g. 2025, default 2025): "
+    if "!season_year!"=="" set season_year=2025
+) else (
+    set season_year=%4
+)
+
+echo.
+echo Using model: !model_type!, season: !season_year!
 echo.
 
-echo Starting prediction interface...
-echo When prompted, we recommend selecting option 2 or 3 for best results.
-echo.
-python predict_game.py
+:predict_loop
+REM Prompt for teams (only teams, not model/season)
+if "%1"=="" (
+    set /p away_team="Enter AWAY team abbreviation (e.g. BOS): "
+) else (
+    set away_team=%1
+    set 1=
+)
+if "%2"=="" (
+    set /p home_team="Enter HOME team abbreviation (e.g. LAL): "
+) else (
+    set home_team=%2
+    set 2=
+)
 
 echo.
-echo Prediction session ended.
-echo Press any key to exit...
-pause >nul 
+echo Running enhanced prediction for !away_team! @ !home_team! (!model_type!, !season_year!)
+echo.
+python predict_game.py !away_team! !home_team! !model_type! !season_year!
+echo.
+echo Prediction completed.
+echo.
+set /p again="Predict another game? (y/n): "
+if /i "!again!"=="y" goto predict_loop
+
+echo Exiting NBA Prediction.
+pause >nul
+endlocal 
