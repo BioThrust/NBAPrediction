@@ -43,13 +43,13 @@ train_neural.bat
 
 ### Running Predictions
 ```bash
-# Interactive betting interface
+# Testing it against actual results (includes simulation betting interface)
 test_results.bat
 
 # Single game prediction
 predict_game.py
 
-# Quick prediction test
+# Testing it against betting odds (who is more likely to win)
 test_prediction.bat
 ```
 
