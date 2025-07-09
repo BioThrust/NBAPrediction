@@ -2,6 +2,8 @@
 
 A sophisticated machine learning system for predicting NBA game outcomes using ensemble models, advanced feature engineering, and interactive betting simulation.
 
+Note: This predicts who is ***more likely*** to win, and thus will get many results wrong 
+
 ## 🏀 Features
 
 ### **Multiple Prediction Models**
